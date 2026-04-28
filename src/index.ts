@@ -39,6 +39,7 @@ export type { VaultConfig, DepositParams, WithdrawParams, VaultInfo } from './co
 // Wallet
 export { LocalKeypairWalletConnector } from './wallet/localKeypairWalletConnector';
 export { BrowserWalletConnector } from './wallet/browserWalletConnector';
+export { MockWalletConnector } from './wallet/mockWalletConnector';
 export type { WalletConnector } from './wallet/walletConnector';
 
 // Utils
