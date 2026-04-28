@@ -7,7 +7,7 @@ import { AxionveraNetwork } from "../utils/networkConfig";
 export interface WalletConnector {
   /**
    * Gets the public key of the connected account.
-   * @returns The public key
+   * @returns A Promise that resolves to the public key of the connected account.
    */
   getPublicKey(): Promise<string>;
 
@@ -19,11 +19,14 @@ export interface WalletConnector {
 
   /**
    * Signs a transaction XDR string.
-   * @param transactionXdr - The base64-encoded transaction XDR
+   * 
+   * Must throw a `WalletConnectionError` if the user rejects the signature or if the connection fails.
+   * 
+   * @param xdr - The base64-encoded transaction XDR to sign
    * @param networkPassphrase - The network passphrase
-   * @returns The base64-encoded signed transaction XDR
+   * @returns A Promise that resolves to the base64-encoded signed transaction XDR
    */
-  signTransaction(transactionXdr: string, networkPassphrase: string): Promise<string>;
+  signTransaction(xdr: string, networkPassphrase: string): Promise<string>;
 }
 
 /**
@@ -56,10 +59,10 @@ export class LocalKeypairWalletConnector implements WalletConnector {
 
   /** @inheritdoc */
   async signTransaction(
-    transactionXdr: string,
+    xdr: string,
     networkPassphrase: string
   ): Promise<string> {
-    const tx = TransactionBuilder.fromXDR(transactionXdr, networkPassphrase);
+    const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase);
     tx.sign(this.keypair);
     return tx.toXDR();
   }
