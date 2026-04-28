@@ -49,3 +49,36 @@ export class LocalKeypairWalletConnector implements WalletConnector {
     return tx.toXDR();
   }
 }
+
+/**
+ * Mock wallet connector for browser sandbox testing.
+ * Returns a fake public key and simulates signing without requiring a real wallet.
+ * Useful for playground environments and StackBlitz demos.
+ */
+export class MockWalletConnector implements WalletConnector {
+  private readonly mockPublicKey: string;
+
+  /**
+   * Creates a new MockWalletConnector.
+   * @param publicKey - Optional fake public key. If not provided, generates a random one.
+   */
+  constructor(publicKey?: string) {
+    this.mockPublicKey = publicKey || Keypair.random().publicKey();
+  }
+
+  /** @inheritdoc */
+  async getPublicKey(): Promise<string> {
+    return this.mockPublicKey;
+  }
+
+  /** @inheritdoc */
+  async signTransaction(
+    transactionXdr: string,
+    networkPassphrase: string
+  ): Promise<string> {
+    // In a real implementation, this would sign the transaction.
+    // For the mock, we just return the unsigned XDR to simulate the flow.
+    // The transaction will fail during simulation, but the UI will remain responsive.
+    return transactionXdr;
+  }
+}
