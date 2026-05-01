@@ -9,6 +9,7 @@ export {
     RpcError,
     ContractError,
     TimeoutError,
+    TransactionTimeoutError,
     InsufficientFundsError,
     InvalidSignatureError,
     InvalidXDRError,
@@ -39,14 +40,16 @@ export type { VaultConfig, DepositParams, WithdrawParams, VaultInfo } from './co
 
 // Wallet
 export { LocalKeypairWalletConnector } from './wallet/walletConnector';
+export { LocalKeypairWalletConnector, MockWalletConnector } from './wallet/walletConnector';
 export { BrowserWalletConnector } from './wallet/browserWalletConnector';
+export { MockWalletConnector } from './wallet/mockWalletConnector';
 export type { WalletConnector } from './wallet/walletConnector';
 
 // Utils
 export { ConcurrencyQueue, createConcurrencyControlledClient } from './utils/concurrencyQueue';
 export { retry, createHttpClientWithRetry } from './utils/httpInterceptor';
-export { buildContractCallOperation, buildContractCallTransaction, buildBaseTransaction, toScVal } from './utils/transactionBuilder';
-export type { BuildBaseTransactionParams } from './utils/transactionBuilder';
+export { buildContractCallOperation, buildContractCallTransaction, buildBaseTransaction, bumpTransactionFee, toScVal } from './utils/transactionBuilder';
+export type { BuildBaseTransactionParams, BumpTransactionFeeOptions } from './utils/transactionBuilder';
 export { getDefaultRpcUrl, getNetworkPassphrase, resolveNetworkConfig } from './utils/networkConfig';
 export { generateTransactionURI, generatePayURI } from './utils/sep7';
 export { isValidXDR, assertValidXDR, MAX_XDR_STRING_LENGTH } from './utils/xdrValidator';
@@ -55,3 +58,6 @@ export { isValidXDR, assertValidXDR, MAX_XDR_STRING_LENGTH } from './utils/xdrVa
 // export * from './test/msw/setup';
 // export * from './test/msw/handlers';
 // export { server } from './test/msw/server';
+export * from './test/msw/setup';
+export * from './test/msw/handlers';
+export { server } from './test/msw/server';
