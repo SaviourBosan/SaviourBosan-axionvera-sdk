@@ -51,6 +51,9 @@ export class StellarRpcResponseError extends AxionveraError {}
 
 export class StellarRpcTimeoutError extends AxionveraError {}
 
+export class InsecureNetworkError extends AxionveraError {}
+export class TransactionTimeoutError extends StellarRpcTimeoutError {}
+
 export class WalletNotInstalledError extends AxionveraError {}
 
 export class FaucetRateLimitError extends AxionveraError {}
@@ -77,6 +80,44 @@ export class SlippageToleranceExceededError extends AxionveraError {
     this.expected = expected;
     this.actual = actual;
     this.tolerance = tolerance;
+export type RPCValidationMismatchErrorOptions = AxionveraErrorOptions & {
+  rpcMethod: string;
+  receivedShape: unknown;
+};
+
+export class RPCValidationMismatchError extends AxionveraError {
+  readonly rpcMethod: string;
+  readonly receivedShape: unknown;
+
+  constructor(message: string, options: RPCValidationMismatchErrorOptions) {
+    super(message, options);
+    this.rpcMethod = options.rpcMethod;
+    this.receivedShape = options.receivedShape;
+export class ContractRevertError extends AxionveraError {
+  readonly trapCode?: string;
+
+  constructor(message: string, trapCode?: string, options: AxionveraErrorOptions = {}) {
+    super(message, options);
+    this.trapCode = trapCode;
+  }
+}
+
+export class TransactionTimeoutError extends AxionveraError {
+  readonly hash: string;
+
+  constructor(hash: string, options: AxionveraErrorOptions = {}) {
+    super(`Transaction ${hash} was not confirmed within the timeout period.`, options);
+    this.hash = hash;
+  }
+}
+
+export class InvalidSignatureError extends AxionveraError {
+  constructor(
+    message: string = 'Webhook signature verification failed',
+    options: AxionveraErrorOptions = {}
+  ) {
+    super(message, options);
+    this.name = 'InvalidSignatureError';
   }
 }
 
