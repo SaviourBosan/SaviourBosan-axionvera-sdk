@@ -1,8 +1,17 @@
 // Client
-export { StellarClient } from './client/stellarClient';
+export { StellarClient, HYDRATION_STATE_VERSION } from './client/stellarClient';
 export { AxionveraClient } from './client/axionveraClient';
 export { FaucetClient } from './client/faucetClient';
-export type { StellarClientOptions } from './client/stellarClient';
+export type {
+  StellarClientOptions,
+  PendingTransaction,
+  TrackedTransaction,
+  SerializedPendingTransaction,
+  ExportedState,
+  TrackTransactionOptions,
+  SimulationContext,
+  SerializableValue,
+} from './client/stellarClient';
 export type { AxionveraClientConfig } from './client/axionveraClient';
 
 // Contracts
@@ -34,6 +43,7 @@ export type { ContractEvent, EventCallback } from './contracts/ContractEventEmit
 export { LocalKeypairWalletConnector } from './wallet/localKeypairWalletConnector';
 export { BrowserWalletConnector } from './wallet/browserWalletConnector';
 export { LedgerWalletConnector } from './wallet/ledgerWalletConnector';
+export { MockWalletConnector } from './wallet/mockWalletConnector';
 export type { WalletConnector } from './wallet/walletConnector';
 
 // Utils
@@ -44,6 +54,8 @@ export type { BumpTransactionFeeOptions } from './utils/transactionBuilder';
 export { getDefaultRpcUrl, getNetworkPassphrase, resolveNetworkConfig } from './utils/networkConfig';
 export { generateTransactionURI, generatePayURI } from './utils/sep7';
 export { decodeXdrBase64, clearXdrCache, getXdrCacheSize } from './utils/xdrCache';
+export { parseEvents, decodeSorobanSymbol } from './utils/soroban';
+export type { ParsedEvent, ParseEventsOptions, DecodedTopic } from './utils/soroban';
 export {
   addAuthEntry,
   buildSorobanAddressAuthEntry,
@@ -66,6 +78,8 @@ export {
   FaucetRateLimitError,
   DeviceLockedError,
   UserRejectedError,
+  ContractRevertError,
+  TransactionTimeoutError,
   toAxionveraError
 } from './errors/axionveraError';
 
