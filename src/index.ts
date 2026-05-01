@@ -61,6 +61,8 @@ export { buildContractCallOperation, buildContractCallTransaction, buildBaseTran
 export type { BuildBaseTransactionParams, BumpTransactionFeeOptions } from './utils/transactionBuilder';
 export { getDefaultRpcUrl, getNetworkPassphrase, resolveNetworkConfig } from './utils/networkConfig';
 export { generateTransactionURI, generatePayURI } from './utils/sep7';
+export { parseEvents, decodeSorobanSymbol } from './utils/soroban';
+export type { ParsedEvent, ParseEventsOptions, DecodedTopic } from './utils/soroban';
 export { isValidXDR, assertValidXDR, MAX_XDR_STRING_LENGTH } from './utils/xdrValidator';
 
 // Testing & MSW
