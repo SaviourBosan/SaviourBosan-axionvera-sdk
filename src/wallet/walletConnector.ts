@@ -1,5 +1,7 @@
 import { Keypair, TransactionBuilder } from "@stellar/stellar-sdk";
 import { AxionveraNetwork } from "../utils/networkConfig";
+import { assertValidXDR } from '../utils/xdrValidator';
+import { InvalidXDRError } from '../errors/axionveraError';
 
 /**
  * Interface for wallet implementations that can sign transactions.
@@ -141,6 +143,21 @@ export class LocalKeypairWalletConnector implements WalletConnector {
     xdr: string,
     networkPassphrase: string
   ): Promise<string> {
+    // Sanitize before any buffer allocation.
+    assertValidXDR(transactionXdr, 'signTransaction');
+    try {
+      const tx = TransactionBuilder.fromXDR(transactionXdr, networkPassphrase);
+      tx.sign(this.keypair);
+      return tx.toXDR();
+    } catch (err) {
+      throw new InvalidXDRError(
+        `signTransaction: failed to parse XDR: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        transactionXdr,
+        { originalError: err },
+      );
+    }
     const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase);
     tx.sign(this.keypair);
     return tx.toXDR();
