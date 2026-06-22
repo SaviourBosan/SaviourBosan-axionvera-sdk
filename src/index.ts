@@ -81,3 +81,16 @@ export { isValidXDR, assertValidXDR, MAX_XDR_STRING_LENGTH } from './utils/xdrVa
 export * from './test/msw/setup';
 export * from './test/msw/handlers';
 export { server } from './test/msw/server';
+
+// Replay Framework
+export { InteractionRecorder, ReplayEngine, ReplayValidator } from './replay';
+export type {
+  ContractHandlers,
+  RecordedInteraction,
+  RecordingMetadata,
+  ReplaySession,
+  ReplayResult,
+  ValidationResult,
+  ReplayValidationReport,
+  ReplayOptions,
+} from './replay';
