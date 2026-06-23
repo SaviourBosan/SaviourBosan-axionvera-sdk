@@ -65,6 +65,8 @@ export type {
 } from './client/stellarClient';
 export type { StellarClientOptions } from './client/stellarClient';
 export type { LogLevel, CustomLogger } from './utils/logger';
+export { MiddlewarePipeline } from './middleware';
+export type { Middleware, MiddlewareContext, MiddlewareRegistration, MiddlewareWorkflow, MiddlewareStage, MiddlewarePipelineOptions } from './middleware';
 export type {
   StellarClientOptions,
   PendingTransaction,
