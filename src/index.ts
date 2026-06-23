@@ -74,6 +74,11 @@ export { parseEvents, decodeSorobanSymbol } from './utils/soroban';
 export type { ParsedEvent, ParseEventsOptions, DecodedTopic } from './utils/soroban';
 export { isValidXDR, assertValidXDR, MAX_XDR_STRING_LENGTH } from './utils/xdrValidator';
 
+
+// Profiling
+export { ProfilingService, profilingService } from './profiling';
+export type { ProfileOptions, ProfiledCallMetric, ProfilingConfig, ProfilingLevel, ProfilingReport } from './profiling';
+
 // Testing & MSW
 // export * from './test/msw/setup';
 // export * from './test/msw/handlers';
