@@ -1,49 +1,79 @@
 // Errors
 export {
-    AxionveraError,
-    NetworkError,
-    AuthenticationError,
-    RateLimitError,
-    ValidationError,
-    TransactionError,
-    RpcError,
-    ContractError,
-    TimeoutError,
-    TransactionTimeoutError,
-    InsufficientFundsError,
-    InvalidSignatureError,
-    InvalidXDRError,
-    SimulationError,
-    WalletNotInstalledError,
-    FaucetRateLimitError,
-    InsecureNetworkError,
-    NetworkMismatchError,
-    AxionveraRPCError,
-    SimulationFailedError,
-    SlippageToleranceExceededError,
-    WalletConnectionError,
-    toAxionveraError,
-    normalizeRpcError,
-    normalizeTransactionError,
-    normalizeContractError,
-    normalizeSimulationError
+  AxionveraError,
+  NetworkError,
+  AuthenticationError,
+  RateLimitError,
+  ValidationError,
+  TransactionError,
+  RpcError,
+  ContractError,
+  TimeoutError,
+  TransactionTimeoutError,
+  InsufficientFundsError,
+  InvalidSignatureError,
+  InvalidXDRError,
+  SimulationError,
+  WalletNotInstalledError,
+  FaucetRateLimitError,
+  InsecureNetworkError,
+  NetworkMismatchError,
+  AxionveraRPCError,
+  SimulationFailedError,
+  SlippageToleranceExceededError,
+  WalletConnectionError,
+  toAxionveraError,
+  normalizeRpcError,
+  normalizeTransactionError,
+  normalizeContractError,
+  normalizeSimulationError,
 } from './errors/axionveraError';
+
+// Dependency Injection
+export {
+  ServiceContainer,
+  createServiceContainer,
+  defaultRpcClientFactory,
+  defaultHttpClientFactory,
+  defaultLoggerFactory,
+  defaultWebSocketManagerFactory,
+} from './core/serviceContainer';
+export type {
+  CoreServices,
+  ServiceOverrides,
+  RpcClientFactory,
+  HttpClientFactory,
+  LoggerFactory,
+  WebSocketManagerFactory,
+  RpcClientFactoryOptions,
+  HttpClientFactoryOptions,
+  WebSocketManagerFactoryOptions,
+  RpcServer,
+  HttpClient,
+  LoggerService,
+  WebSocketManagerService,
+} from './core/serviceInterfaces';
 
 // Client
 export { StellarClient, HYDRATION_STATE_VERSION } from './client/stellarClient';
 export { FaucetClient } from './client/faucetClient';
-export type { StellarClientOptions, GetContractEventsOptions, GetContractEventsResult, ContractEventResult } from './client/stellarClient';
+export type {
+  StellarClientOptions,
+  GetContractEventsOptions,
+  GetContractEventsResult,
+  ContractEventResult,
+} from './client/stellarClient';
 export type { StellarClientOptions } from './client/stellarClient';
 export type { LogLevel, CustomLogger } from './utils/logger';
 export type {
-    StellarClientOptions,
-    PendingTransaction,
-    TrackedTransaction,
-    SerializedPendingTransaction,
-    ExportedState,
-    TrackTransactionOptions,
-    SimulationContext,
-    SerializableValue,
+  StellarClientOptions,
+  PendingTransaction,
+  TrackedTransaction,
+  SerializedPendingTransaction,
+  ExportedState,
+  TrackTransactionOptions,
+  SimulationContext,
+  SerializableValue,
 } from './client/stellarClient';
 
 // Contracts
@@ -62,11 +92,34 @@ export type { WalletConnector } from './wallet/walletConnector';
 // Utils
 export { ConcurrencyQueue, createConcurrencyControlledClient } from './utils/concurrencyQueue';
 export { retry, createHttpClientWithRetry } from './utils/httpInterceptor';
-export { buildContractCallOperation, buildContractCallTransaction, buildBaseTransaction, toScVal, ContractCallBuilder } from './utils/transactionBuilder';
-export type { BuildBaseTransactionParams, BuildContractCallParams, ContractCallArg } from './utils/transactionBuilder';
-export { buildContractCallOperation, buildContractCallTransaction, buildBaseTransaction, bumpTransactionFee, toScVal } from './utils/transactionBuilder';
-export type { BuildBaseTransactionParams, BumpTransactionFeeOptions } from './utils/transactionBuilder';
-export { getDefaultRpcUrl, getNetworkPassphrase, resolveNetworkConfig } from './utils/networkConfig';
+export {
+  buildContractCallOperation,
+  buildContractCallTransaction,
+  buildBaseTransaction,
+  toScVal,
+  ContractCallBuilder,
+} from './utils/transactionBuilder';
+export type {
+  BuildBaseTransactionParams,
+  BuildContractCallParams,
+  ContractCallArg,
+} from './utils/transactionBuilder';
+export {
+  buildContractCallOperation,
+  buildContractCallTransaction,
+  buildBaseTransaction,
+  bumpTransactionFee,
+  toScVal,
+} from './utils/transactionBuilder';
+export type {
+  BuildBaseTransactionParams,
+  BumpTransactionFeeOptions,
+} from './utils/transactionBuilder';
+export {
+  getDefaultRpcUrl,
+  getNetworkPassphrase,
+  resolveNetworkConfig,
+} from './utils/networkConfig';
 export { generateTransactionURI, generatePayURI } from './utils/sep7';
 export { getRequiredSigners } from './utils/getRequiredSigners';
 export { verifyWebhookSignature } from './utils/webhooks';

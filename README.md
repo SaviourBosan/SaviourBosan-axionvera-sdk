@@ -19,6 +19,7 @@
 - [Migration Guide](#-migration-guide)
 - [Usage Examples](#-usage-examples)
 - [Module Architecture](#-module-architecture)
+- [Dependency Injection](#dependency-injection)
 - [API Reference](#-api-reference)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
@@ -61,16 +62,19 @@ The SDK requires Node.js 18+ and has `@stellar/stellar-sdk` as a peer dependency
 Install the package using your preferred package manager:
 
 **Using npm:**
+
 ```bash
 npm install axionvera-sdk @stellar/stellar-sdk
 ```
 
 **Using yarn:**
+
 ```bash
 yarn add axionvera-sdk @stellar/stellar-sdk
 ```
 
 **Using pnpm:**
+
 ```bash
 pnpm add axionvera-sdk @stellar/stellar-sdk
 ```
@@ -97,15 +101,11 @@ Ensure your `tsconfig.json` has `strict: true` for full type safety:
 Here is a step-by-step guide to initializing the SDK, connecting a local wallet, and executing a transaction on the Vault contract.
 
 ```typescript
-import { Keypair } from "@stellar/stellar-sdk";
-import {
-  LocalKeypairWalletConnector,
-  StellarClient,
-  VaultContract
-} from "axionvera-sdk";
+import { Keypair } from '@stellar/stellar-sdk';
+import { LocalKeypairWalletConnector, StellarClient, VaultContract } from 'axionvera-sdk';
 
 // 1. Initialize the Stellar Client for the Testnet
-const client = new StellarClient({ network: "testnet" });
+const client = new StellarClient({ network: 'testnet' });
 
 // 2. Set up the Wallet Connector with your secret key
 const keypair = Keypair.fromSecret(process.env.STELLAR_SECRET_KEY!);
@@ -115,21 +115,21 @@ const wallet = new LocalKeypairWalletConnector(keypair);
 const vault = new VaultContract({
   client,
   contractId: process.env.AXIONVERA_VAULT_CONTRACT_ID!,
-  wallet
+  wallet,
 });
 
 // 4. Execute a transaction
 async function run() {
   try {
-    console.log("Depositing 1000 units into the vault...");
-    
+    console.log('Depositing 1000 units into the vault...');
+
     // The SDK automatically handles building, simulating, signing, and submitting the transaction
     const depositResult = await vault.deposit({ amount: 1000n });
-    
-    console.log("Transaction successful!");
-    console.log("Result:", depositResult);
+
+    console.log('Transaction successful!');
+    console.log('Result:', depositResult);
   } catch (error) {
-    console.error("Transaction failed:", error);
+    console.error('Transaction failed:', error);
   }
 }
 
@@ -145,11 +145,13 @@ Try the SDK in your browser without any local setup using our interactive playgr
 [![Open in StackBlitz](https://stackblitz.com/github/Listoncrypt/axionvera-sdk/badge.svg)](https://stackblitz.com/github/Listoncrypt/axionvera-sdk?file=examples/browser-sandbox/index.ts)
 
 The browser sandbox uses the `MockWalletConnector` to demonstrate SDK initialization and wallet connection flows without requiring a real wallet extension. This is perfect for:
+
 - Quick prototyping and testing
 - Understanding the SDK API
 - Demonstrating the SDK to stakeholders
 
 To run the sandbox locally:
+
 ```bash
 cd examples/browser-sandbox
 npm install
@@ -160,7 +162,7 @@ npm run dev
 
 ## � Migration Guide
 
-**Coming from Stellar Classic (stellar-sdk v10)?** 
+**Coming from Stellar Classic (stellar-sdk v10)?**
 
 We've prepared a comprehensive [Migration Guide](./docs/MIGRATION_GUIDE.md) to help you transition from Classic operations to Soroban smart contracts. The guide covers:
 
@@ -187,11 +189,8 @@ We provide detailed, runnable examples in the [`examples/`](./examples/) directo
 When a signed transaction is still pending and the network fee market moves, you can wrap the original signed XDR in a fee bump envelope instead of asking the user to re-sign the contract call.
 
 ```typescript
-import { Keypair, Networks } from "@stellar/stellar-sdk";
-import {
-  LocalKeypairWalletConnector,
-  bumpTransactionFee
-} from "axionvera-sdk";
+import { Keypair, Networks } from '@stellar/stellar-sdk';
+import { LocalKeypairWalletConnector, bumpTransactionFee } from 'axionvera-sdk';
 
 const sponsorWallet = new LocalKeypairWalletConnector(
   Keypair.fromSecret(process.env.SPONSOR_SECRET_KEY!)
@@ -199,13 +198,10 @@ const sponsorWallet = new LocalKeypairWalletConnector(
 
 const feeBumpEnvelopeXdr = bumpTransactionFee(userSignedXdr, 500, {
   feeSource: await sponsorWallet.getPublicKey(),
-  networkPassphrase: Networks.TESTNET
+  networkPassphrase: Networks.TESTNET,
 });
 
-const sponsorSignedXdr = await sponsorWallet.signTransaction(
-  feeBumpEnvelopeXdr,
-  Networks.TESTNET
-);
+const sponsorSignedXdr = await sponsorWallet.signTransaction(feeBumpEnvelopeXdr, Networks.TESTNET);
 
 await client.sendTransaction(sponsorSignedXdr);
 ```
@@ -219,17 +215,21 @@ This preserves the original user signature on the inner transaction. Only the ou
 The SDK is organized into clear layers to keep concerns separated:
 
 ### `src/client/`
+
 - **`StellarClient`**: Main entry point for Soroban RPC connections
 - **`FaucetClient`**: Automated account funding for test networks
 
 ### `src/contracts/`
+
 - **`VaultContract`**: High-level wrapper for the Axionvera Vault contract
 
 ### `src/wallet/`
+
 - **`WalletConnector`**: Interface for wallet signing
 - **`LocalKeypairWalletConnector`**: Built-in keypair signer for server-side use
 
 ### `src/utils/`
+
 - **`networkConfig`**: Default RPC URLs and network passphrases
 - **`transactionBuilder`**: Helpers to build Soroban contract calls
 - **`concurrencyQueue`**: Rate limiting for high-volume apps
@@ -238,16 +238,47 @@ The SDK is organized into clear layers to keep concerns separated:
 - **`logger`**: Built-in logging with sensitive data redaction
 
 ### `src/errors/`
+
 - Typed error classes for different failure modes
 
 ---
+
+## Dependency Injection
+
+Axionvera SDK services can be resolved through a lightweight dependency container. This keeps core modules loosely coupled while preserving the existing `new StellarClient(...)` API.
+
+```typescript
+import { StellarClient, createServiceContainer } from 'axionvera-sdk';
+
+const container = createServiceContainer({
+  rpcClient: mockRpcClient,
+  httpClient: mockHttpClient,
+  logger: testLogger,
+});
+
+const client = new StellarClient({
+  network: 'testnet',
+  container,
+});
+```
+
+The default dependency graph is:
+
+- `StellarClient` resolves a `LoggerService`, `HttpClient`, `RpcServer`, and optional `WebSocketManagerService`.
+- `defaultRpcClientFactory` creates `@stellar/stellar-sdk` RPC clients and wraps them with concurrency control when `concurrencyConfig` is provided.
+- `defaultHttpClientFactory` creates the retry-enabled Axios client.
+- `defaultWebSocketManagerFactory` wires WebSocket callbacks to the resolved logger.
+
+Migration is incremental: existing callers do not need changes, while tests and advanced integrations can override individual services with `services` or provide a preconfigured `ServiceContainer`.
 
 ## 📚 API Reference
 
 For deep architectural details, see the [SDK Overview](./docs/sdk-overview.md) and [Usage Guide](./docs/usage-guide.md). Below is a summary of the core API classes:
 
 ### `StellarClient`
+
 The core client wrapping the Soroban RPC connection.
+
 - `getHealth()`: Check the health of the RPC node.
 - `simulateTransaction(tx)`: Simulates a transaction to calculate fees and resource footprints.
 - `prepareTransaction(tx)`: Attaches the simulation footprints and minimum fees to the transaction.
@@ -256,7 +287,9 @@ The core client wrapping the Soroban RPC connection.
 - `logLevel`: Property in `StellarClientOptions` to control SDK output visibility.
 
 ### `VaultContract`
+
 A high-level abstraction for the Axionvera Vault smart contract.
+
 - `deposit({ amount, from })`: Deposits tokens into the vault.
 - `withdraw({ amount, from })`: Withdraws tokens from the vault.
 - `getBalance({ account })`: Retrieves the vault balance for a specific account.
@@ -265,17 +298,23 @@ A high-level abstraction for the Axionvera Vault smart contract.
 - `claimRewards({ from })`: Claims pending rewards for the caller.
 
 ### `FaucetClient`
+
 Automated funding for Testnet and Futurenet.
+
 - `fundAccount(publicKey)`: Hits the correct Friendbot endpoint based on the client's network. Throws `FaucetRateLimitError` if throttled.
 
 ### `SEP-0007 Utilities`
+
 Standardized URI generation for mobile wallet integration.
+
 - `generateTransactionURI(xdr, callbackUrl)`: Generates a `web+stellar:tx` URI.
 - `generatePayURI(destination, amount, assetCode, assetIssuer)`: Generates a `web+stellar:pay` URI.
 - `bumpTransactionFee(signedXdr, newBaseFee, options)`: Wraps a signed transaction XDR in an unsigned fee bump envelope for sponsor signing.
 
 ### `WalletConnector` (Interface)
+
 Implement this interface to integrate browser extension wallets (like Freighter) or use the provided `LocalKeypairWalletConnector` for backend/scripting services.
+
 - `getPublicKey()`: Returns the public key of the connected wallet.
 - `signTransaction(xdr, passphrase)`: Signs a prepared transaction XDR string and returns the signed XDR.
 
@@ -301,6 +340,7 @@ We welcome and appreciate contributions from the community! Whether it's reporti
 Please read our [Contributing Guidelines](./CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
 ### Development Setup
+
 To set up the project locally for development:
 
 ```bash
@@ -335,4 +375,5 @@ If you have any questions, feedback, or need support, feel free to reach out:
 - **Twitter**: [@Axionvera](https://twitter.com/axionvera)
 
 ---
-*Built with ❤️ by the Axionvera Team.*
+
+_Built with ❤️ by the Axionvera Team._
