@@ -13,8 +13,8 @@ import {
 } from "@stellar/stellar-sdk";
 
 import { AxionveraNetwork, resolveNetworkConfig } from "../utils/networkConfig";
-import { ConcurrencyConfig, DEFAULT_CONCURRENCY_CONFIG, createConcurrencyControlledClient } from "../utils/concurrencyQueue";
-import { RetryConfig, createHttpClientWithRetry, retry } from "../utils/httpInterceptor";
+import { ConcurrencyConfig, DEFAULT_CONCURRENCY_CONFIG } from "../utils/concurrencyQueue";
+import { RetryConfig, retry } from "../utils/httpInterceptor";
 import { normalizeRpcError, normalizeTransactionError, TimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError } from "../errors/axionveraError";
 import {
   validateRpcResponse,
@@ -31,6 +31,8 @@ import { WebSocketManager } from "./websocket/websocketManager";
 import { WebSocketConfig } from "./websocket/types";
 import { Logger } from "../utils/logger";
 import { WalletConnector } from "../wallet/walletConnector";
+import { ServiceContainer, createServiceContainer } from "../core/serviceContainer";
+import { ServiceOverrides } from "../core/serviceInterfaces";
 
 const DEFAULT_FEE_BUFFER_MULTIPLIER = 1.15;
 
@@ -64,6 +66,10 @@ export type StellarClientOptions = {
   /** Hard ceiling for the total prepared fee in stroops. */
   maxFeeLimit?: number;
   allowHttp?: boolean;
+  /** Core service overrides for dependency injection. */
+  services?: ServiceOverrides;
+  /** Dependency container used to resolve SDK services at runtime. */
+  container?: ServiceContainer;
   /** Timeout in milliseconds for account fetching (default: 2000) */
   accountFetchTimeoutMs?: number;
   /** TTL in milliseconds for cached account sequence (default: 5000) */
@@ -320,8 +326,13 @@ export class StellarClient {
     };
     this.concurrencyEnabled = !!options?.concurrencyConfig;
     this.retryConfig = options?.retryConfig ?? {};
-    this.httpClient = createHttpClientWithRetry(this.retryConfig);
-    this.logger = options?.logger ?? new Logger();
+    const serviceOverrides = {
+      ...options?.services,
+      rpcClient: options?.rpcClient ?? options?.services?.rpcClient,
+    };
+    const container = options?.container ?? createServiceContainer(serviceOverrides);
+    this.httpClient = container.getHttpClient({ retryConfig: this.retryConfig });
+    this.logger = options?.logger ?? container.getLogger();
 this.accountFetchTimeoutMs = options?.accountFetchTimeoutMs ?? 2000;
     this.cacheTtlMs = options?.cacheTtlMs ?? 5000;
     this.accountSequenceCache = new Map();
@@ -342,30 +353,19 @@ this.accountCache = new Map();
 
     // Initialize WebSocket manager if configuration is provided
     if (options?.webSocketConfig) {
-      this.webSocketManager = new WebSocketManager(
-        this.rpcUrl,
-        options.webSocketConfig,
-        {
-          onEvent: (event) => this.logger.debug('WebSocket event received:', event),
-          onConnectionChange: (connected) => this.logger.debug(`WebSocket connection changed: ${connected}`),
-          logger: this.logger,
-        }
-      );
+      this.webSocketManager = container.getWebSocketManager({
+        rpcUrl: this.rpcUrl,
+        config: options.webSocketConfig,
+        logger: this.logger,
+      });
     }
 
-    if (options?.rpcClient) {
-      this.rpc = options.rpcClient;
-    } else {
-      const allowHttp = this.rpcUrl.startsWith("http://");
-      const baseRpc = new rpc.Server(this.rpcUrl, { allowHttp });
-
-      // Apply concurrency control if enabled
-      if (this.concurrencyEnabled) {
-        this.rpc = createConcurrencyControlledClient(baseRpc, this.concurrencyConfig);
-      } else {
-        this.rpc = baseRpc;
-      }
-    }
+    this.rpc = container.getRpcClient({
+      rpcUrl: this.rpcUrl,
+      allowHttp: this.rpcUrl.startsWith("http://"),
+      concurrencyEnabled: this.concurrencyEnabled,
+      concurrencyConfig: this.concurrencyConfig,
+    });
   }
 
   /**
