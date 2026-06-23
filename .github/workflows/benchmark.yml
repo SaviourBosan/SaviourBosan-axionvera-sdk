@@ -9,6 +9,10 @@ on:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     
     steps:
     - name: Checkout code
@@ -33,14 +37,20 @@ jobs:
       id: extract
       run: |
         cd benchmarks
-        npm run benchmark:ci > benchmark_output.txt 2>&1 || true
+        npm run benchmark:ci > benchmark_output.txt 2>&1
         
         # Extract the main parsing benchmark result
-        PARSE_RESULT=$(grep "benchmark_Transaction_fromXDR___Complex_Transactions=" benchmark_output.txt | cut -d'=' -f2 || echo "0")
+        PARSE_RESULT=$(grep "^benchmark_Transaction_fromXDR" benchmark_output.txt | head -n 1 | cut -d'=' -f2)
+        if [ -z "$PARSE_RESULT" ]; then
+          cat benchmark_output.txt
+          echo "::error::Unable to extract Transaction.fromXDR benchmark result."
+          exit 1
+        fi
         echo "parse_result=$PARSE_RESULT" >> $GITHUB_OUTPUT
         
         # Extract total time
-        TOTAL_TIME=$(grep "Total benchmark time:" benchmark_output.txt | grep -o '[0-9.]*' || echo "0")
+        TOTAL_TIME=$(grep "Total benchmark time:" benchmark_output.txt | grep -o '[0-9.]*' || true)
+        TOTAL_TIME=${TOTAL_TIME:-0}
         echo "total_time=$TOTAL_TIME" >> $GITHUB_OUTPUT
         
         # Check for performance warning
@@ -51,8 +61,8 @@ jobs:
         fi
         
     - name: Comment on PR
-      if: github.event_name == 'pull_request'
-      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      uses: actions/github-script@v8
       with:
         script: |
           const parseResult = '${{ steps.extract.outputs.parse_result }}';

@@ -186,7 +186,6 @@ export class CloudWatchLogger {
           logStreamNamePrefix: this.config.logStreamName,
         });
         
-        const response = await (this.client as any).send(command);
         const response = await this.client!.send(command);
         const stream = response.logStreams?.find(
           (s: { logStreamName?: string }) => s.logStreamName === this.config.logStreamName

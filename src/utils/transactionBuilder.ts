@@ -265,6 +265,7 @@ export class ContractCallBuilder {
       args: this._args
     });
   }
+/**
  * Wraps a signed transaction in an unsigned fee bump envelope.
  *
  * The returned XDR preserves the original user signature on the inner

@@ -15,7 +15,6 @@ import {
 import { AxionveraNetwork, resolveNetworkConfig } from "../utils/networkConfig";
 import { ConcurrencyConfig, DEFAULT_CONCURRENCY_CONFIG, createConcurrencyControlledClient } from "../utils/concurrencyQueue";
 import { RetryConfig, createHttpClientWithRetry, retry } from "../utils/httpInterceptor";
-import { normalizeRpcError, normalizeTransactionError, TimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError } from "../errors/axionveraError";
 import {
   validateRpcResponse,
   GetHealthResponseSchema,
@@ -24,9 +23,8 @@ import {
   ValidatedGetHealthResponse,
   ValidatedGetTransactionResponse,
 } from "../utils/rpcSchemas";
-import { normalizeRpcError, normalizeTransactionError, TimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError, InvalidXDRError } from "../errors/axionveraError";
 import { assertValidXDR } from '../utils/xdrValidator';
-import { normalizeRpcError, normalizeTransactionError, TransactionTimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError, ValidationError, toAxionveraError } from "../errors/axionveraError";
+import { normalizeRpcError, normalizeTransactionError, TimeoutError, TransactionTimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError, ValidationError, InvalidXDRError, toAxionveraError } from "../errors/axionveraError";
 import { WebSocketManager } from "./websocket/websocketManager";
 import { WebSocketConfig } from "./websocket/types";
 import { Logger } from "../utils/logger";
@@ -99,6 +97,8 @@ export type ContractEventResult = Omit<rpc.Api.EventResponse, "topic" | "value">
 export type GetContractEventsResult = {
   events: ContractEventResult[];
   pagingToken?: string;
+};
+
 /** Snapshot version for forward-compatibility of (de)serialized state. */
 export const HYDRATION_STATE_VERSION = 1 as const;
 
@@ -251,6 +251,20 @@ export class StellarClient {
   readonly logger: Logger;
   /** Optional RPC endpoint health monitor. */
   readonly healthMonitor?: RpcHealthMonitor;
+  /** Timeout in milliseconds for account fetching. */
+  private readonly accountFetchTimeoutMs: number;
+  /** TTL in milliseconds for cached account sequence. */
+  private readonly cacheTtlMs: number;
+  /** Cached account sequence numbers for offline transaction building. */
+  private readonly accountSequenceCache: Map<string, { sequence: bigint; timestamp: number }>;
+  /** Account cache for offline support. */
+  private readonly accountCache: Map<string, { account: Account; timestamp: number }>;
+  /** Multiplier applied to simulated Soroban resources and fees. */
+  readonly feeBufferMultiplier: number;
+  /** Optional hard ceiling for the total prepared fee. */
+  readonly maxFeeLimit?: bigint;
+  /** Transactions currently being polled. */
+  private readonly pendingTransactions = new Map<string, TrackedTransaction>();
 
   /**
    * Creates a new StellarClient instance for interacting with Soroban RPC.
@@ -552,56 +566,6 @@ this.accountCache = new Map();
         // Create account with the incremented sequence
         return new Account(publicKey, newSequence.toString());
       }
-      // No cache available, throw error
-   * Retrieves an account's information with offline cache fallback.
-   * Tries to fetch from the network first, but falls back to cached data if the network is unavailable.
-   * The cache is valid for 5 seconds and sequence numbers are incremented for sequential offline builds.
-   * @param publicKey - The account's public key (G-prefixed string)
-   * @returns The account information including sequence number and balances
-   * @throws AxionveraError if both network fetch fails and no valid cache exists
-   * @example
-   * ```typescript
-   * import { StellarClient } from "axionvera-sdk";
-   *
-   * const client = new StellarClient({ network: "testnet" });
-   *
-   * // First call fetches from network and caches the result
-   * const account1 = await client.getAccountWithCache("GD5JPQ7VKFOVRWPOEX74JYXHHFNTFZ2JE5WZ4K2MWTROVHMWHD7KUZ2V");
-   * console.log("Sequence:", account1.sequenceNumber().toString());
-   *
-   * // If network fails within 5 seconds, returns cached account with incremented sequence
-   * const account2 = await client.getAccountWithCache("GD5JPQ7VKFOVRWPOEX74JYXHHFNTFZ2JE5WZ4K2MWTROVHMWHD7KUZ2V");
-   * console.log("Cached sequence:", account2.sequenceNumber().toString());
-   * ```
-   */
-  async getAccountWithCache(publicKey: string): Promise<Account> {
-    try {
-      // Try to fetch from network
-      const account = await this.getAccount(publicKey);
-      // Update cache on success
-      this.accountCache.set(publicKey, {
-        account,
-        timestamp: Date.now()
-      });
-      return account;
-    } catch (error) {
-      // Network failed, check cache
-      const cached = this.accountCache.get(publicKey);
-      if (cached && (Date.now() - cached.timestamp < this.CACHE_TTL)) {
-        this.logger.debug(`Using cached account for ${publicKey}`);
-        // Increment sequence for sequential offline builds
-        const currentSequence = cached.account.sequenceNumber();
-        const newSequence = currentSequence + 1n;
-        // Create new account with incremented sequence
-        const cachedAccount = new Account(publicKey, newSequence.toString());
-        // Update cache with incremented sequence
-        this.accountCache.set(publicKey, {
-          account: cachedAccount,
-          timestamp: cached.timestamp
-        });
-        return cachedAccount;
-      }
-      // No valid cache, throw error
       throw new AxionveraError(
         `Failed to fetch account and no valid cache available for ${publicKey}`,
         { originalError: error }
@@ -1188,16 +1152,6 @@ this.accountCache = new Map();
    * @param params - Optional polling parameters
    * @param params.timeoutMs - Maximum time to wait in milliseconds (default: 30000)
    * @param params.intervalMs - Time between polls in milliseconds (default: 1000)
-/** Cache time-to-live in milliseconds for account data. */
-  private readonly CACHE_TTL = 5000;
-  /** Account cache for offline support. */
-  private accountCache: Map<string, { account: Account; timestamp: number }>;
-  /** Optional wallet connector for transaction signing. */
-  private wallet?: WalletConnector;
-  /** Multiplier applied to simulated Soroban resources and fees. */
-  readonly feeBufferMultiplier: number;
-  /** Optional hard ceiling for the total prepared fee. */
-  readonly maxFeeLimit?: bigint;
    */
   async pollTransaction(
     hash: string,
@@ -1315,79 +1269,12 @@ this.accountCache = new Map();
         deadline: tx.deadline.toISOString(),
         label: tx.label,
       });
-  ): Promise<TransactionPollResult> {
-    const timeoutMs = params?.timeoutMs ?? 30_000;
-    const intervalMs = params?.intervalMs ?? 1_000;
-
-    validatePollingInterval(timeoutMs, "timeoutMs", true);
-    validatePollingInterval(intervalMs, "intervalMs", false);
-
-    return new Promise<TransactionPollResult>((resolve, reject) => {
-      let settled = false;
-      let pollTimer: ReturnType<typeof setTimeout> | undefined;
-
-      const clearTimers = () => {
-        clearTimeout(timeoutTimer);
-        if (pollTimer) {
-          clearTimeout(pollTimer);
-        }
-      };
-
-      const settle = (callback: () => void) => {
-        if (settled) {
-          return;
-        }
-
-        settled = true;
-        clearTimers();
-        callback();
-      };
-
-      const scheduleNextPoll = () => {
-        if (settled) {
-          return;
-        }
-
-        pollTimer = setTimeout(() => {
-          void pollOnce();
-        }, intervalMs);
-      };
-
-      const timeoutTimer = setTimeout(() => {
-        settle(() => {
-          reject(
-            new TransactionTimeoutError(
-              `Timed out waiting for transaction ${hash} after ${timeoutMs}ms`
-            )
-          );
-        });
-      }, timeoutMs);
-
-      const pollOnce = async () => {
-        try {
-          const res = await this.getTransaction(hash);
-          if (settled) {
-            return;
-          }
-
-          const parsed = parseTransactionPollResult(res);
-          if (parsed.status === "SUCCESS" || parsed.status === "FAILED") {
-            settle(() => resolve(parsed));
-            return;
-          }
-
-          scheduleNextPoll();
-        } catch (error) {
-          if (settled) {
-            return;
-          }
-
-          settle(() => reject(error));
-        }
-      };
-
-      void pollOnce();
-    });
+    }
+    return {
+      version: HYDRATION_STATE_VERSION,
+      exportedAt: new Date().toISOString(),
+      pending,
+    };
   }
 
   private applyFeeBuffer(tx: Transaction): Transaction {
@@ -1420,11 +1307,20 @@ this.accountCache = new Map();
         );
       }
     }
-    return {
-      version: HYDRATION_STATE_VERSION,
-      exportedAt: new Date().toISOString(),
-      pending,
-    };
+    const bufferedSorobanData = new SorobanDataBuilder(sorobanData)
+      .setResources(
+        multiplyAndCeil(resources.instructions(), this.feeBufferMultiplier),
+        multiplyAndCeil(resources.diskReadBytes(), this.feeBufferMultiplier),
+        multiplyAndCeil(resources.writeBytes(), this.feeBufferMultiplier)
+      )
+      .setResourceFee(bufferedResourceFee.toString())
+      .build();
+
+    return TransactionBuilder.cloneFrom(tx, {
+      fee: bufferedBaseFee.toString(),
+      networkPassphrase: tx.networkPassphrase,
+      sorobanData: bufferedSorobanData
+    }).build();
   }
 
   /**
@@ -1483,20 +1379,6 @@ this.accountCache = new Map();
       restored.push(tracked);
     }
     return restored;
-    const bufferedSorobanData = new SorobanDataBuilder(sorobanData)
-      .setResources(
-        multiplyAndCeil(resources.instructions(), this.feeBufferMultiplier),
-        multiplyAndCeil(resources.diskReadBytes(), this.feeBufferMultiplier),
-        multiplyAndCeil(resources.writeBytes(), this.feeBufferMultiplier)
-      )
-      .setResourceFee(bufferedResourceFee.toString())
-      .build();
-
-    return TransactionBuilder.cloneFrom(tx, {
-      fee: bufferedBaseFee.toString(),
-      networkPassphrase: tx.networkPassphrase,
-      sorobanData: bufferedSorobanData
-    }).build();
   }
 
   /**

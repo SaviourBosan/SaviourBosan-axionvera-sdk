@@ -1,5 +1,12 @@
 const Benchmark = require('benchmark');
-const { TransactionBuilder, xdr } = require('@stellar/stellar-sdk');
+const {
+  Account,
+  Asset,
+  Keypair,
+  Memo,
+  Operation,
+  TransactionBuilder,
+} = require('@stellar/stellar-sdk');
 
 /**
  * Performance benchmarks for XDR parsing in the Axionvera SDK.
@@ -14,11 +21,7 @@ function generateComplexTransactions(count) {
   const networkPassphrase = "Test SDF Network ; September 2015";
   
   for (let i = 0; i < count; i++) {
-    // Create a source account
-    const sourceAccount = {
-      accountId: `G${'A'.repeat(56)}`, // Mock public key
-      sequence: i.toString(),
-    };
+    const sourceAccount = new Account(Keypair.random().publicKey(), i.toString());
     
     // Create a complex transaction with multiple operations
     const builder = new TransactionBuilder(sourceAccount, {
@@ -26,39 +29,17 @@ function generateComplexTransactions(count) {
       networkPassphrase
     });
     
-    // Add multiple contract call operations
+    // Add multiple operations to keep the generated XDR non-trivial.
     for (let j = 0; j < 5; j++) {
-      const contractId = `C${'B'.repeat(63)}${j}`; // Mock contract ID
-      const contract = new Contract(contractId);
-      
-      // Create complex arguments
-      const args = [
-        xdr.ScVal.scvString(`method_${j}_${i}`),
-        xdr.ScVal.scvU64(BigInt(i * 1000000)),
-        xdr.ScVal.scvMap([
-          new xdr.MapEntry({
-            key: xdr.ScVal.scvSymbol("key1"),
-            val: xdr.ScVal.scvString(`value1_${i}`)
-          }),
-          new xdr.MapEntry({
-            key: xdr.ScVal.scvSymbol("key2"),
-            val: xdr.ScVal.scvU32(j)
-          })
-        ]),
-        xdr.ScVal.scvVec([
-          xdr.ScVal.scvU32(1),
-          xdr.ScVal.scvU32(2),
-          xdr.ScVal.scvU32(3),
-          xdr.ScVal.scvBool(true),
-          xdr.ScVal.scvAddress(new xdr.ScAddress.scAddressTypeContract(Buffer.alloc(32, i)))
-        ])
-      ];
-      
-      builder.addOperation(contract.call(`complex_method_${j}`, ...args));
+      builder.addOperation(Operation.payment({
+        destination: Keypair.random().publicKey(),
+        asset: Asset.native(),
+        amount: (String(j + 1)),
+      }));
     }
     
     // Add memo
-    builder.addMemo(`Complex transaction ${i} with multiple operations`);
+    builder.addMemo(Memo.text(`Complex transaction ${i}`));
     
     // Set timeout
     builder.setTimeout(300 + i);
