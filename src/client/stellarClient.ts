@@ -13,8 +13,8 @@ import {
 } from "@stellar/stellar-sdk";
 
 import { AxionveraNetwork, resolveNetworkConfig } from "../utils/networkConfig";
-import { ConcurrencyConfig, DEFAULT_CONCURRENCY_CONFIG, createConcurrencyControlledClient } from "../utils/concurrencyQueue";
-import { RetryConfig, createHttpClientWithRetry, retry } from "../utils/httpInterceptor";
+import { ConcurrencyConfig, DEFAULT_CONCURRENCY_CONFIG } from "../utils/concurrencyQueue";
+import { RetryConfig, retry } from "../utils/httpInterceptor";
 import { normalizeRpcError, normalizeTransactionError, TimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError } from "../errors/axionveraError";
 import {
   validateRpcResponse,
@@ -31,7 +31,8 @@ import { WebSocketManager } from "./websocket/websocketManager";
 import { WebSocketConfig } from "./websocket/types";
 import { Logger } from "../utils/logger";
 import { WalletConnector } from "../wallet/walletConnector";
-import { Middleware, MiddlewarePipeline, MiddlewareRegistration } from "../middleware";
+import { ServiceContainer, createServiceContainer } from "../core/serviceContainer";
+import { ServiceOverrides } from "../core/serviceInterfaces";
 
 const DEFAULT_FEE_BUFFER_MULTIPLIER = 1.15;
 
@@ -67,6 +68,10 @@ export type StellarClientOptions = {
   /** Hard ceiling for the total prepared fee in stroops. */
   maxFeeLimit?: number;
   allowHttp?: boolean;
+  /** Core service overrides for dependency injection. */
+  services?: ServiceOverrides;
+  /** Dependency container used to resolve SDK services at runtime. */
+  container?: ServiceContainer;
   /** Timeout in milliseconds for account fetching (default: 2000) */
   accountFetchTimeoutMs?: number;
   /** TTL in milliseconds for cached account sequence (default: 5000) */
@@ -96,6 +101,8 @@ export type ContractEventResult = Omit<rpc.Api.EventResponse, "topic" | "value">
 export type GetContractEventsResult = {
   events: ContractEventResult[];
   pagingToken?: string;
+};
+
 /** Snapshot version for forward-compatibility of (de)serialized state. */
 export const HYDRATION_STATE_VERSION = 1 as const;
 
@@ -325,8 +332,13 @@ export class StellarClient {
     };
     this.concurrencyEnabled = !!options?.concurrencyConfig;
     this.retryConfig = options?.retryConfig ?? {};
-    this.httpClient = createHttpClientWithRetry(this.retryConfig);
-    this.logger = options?.logger ?? new Logger();
+    const serviceOverrides = {
+      ...options?.services,
+      rpcClient: options?.rpcClient ?? options?.services?.rpcClient,
+    };
+    const container = options?.container ?? createServiceContainer(serviceOverrides);
+    this.httpClient = container.getHttpClient({ retryConfig: this.retryConfig });
+    this.logger = options?.logger ?? container.getLogger();
 this.accountFetchTimeoutMs = options?.accountFetchTimeoutMs ?? 2000;
     this.cacheTtlMs = options?.cacheTtlMs ?? 5000;
     this.accountSequenceCache = new Map();
@@ -348,30 +360,19 @@ this.accountCache = new Map();
 
     // Initialize WebSocket manager if configuration is provided
     if (options?.webSocketConfig) {
-      this.webSocketManager = new WebSocketManager(
-        this.rpcUrl,
-        options.webSocketConfig,
-        {
-          onEvent: (event) => this.logger.debug('WebSocket event received:', event),
-          onConnectionChange: (connected) => this.logger.debug(`WebSocket connection changed: ${connected}`),
-          logger: this.logger,
-        }
-      );
+      this.webSocketManager = container.getWebSocketManager({
+        rpcUrl: this.rpcUrl,
+        config: options.webSocketConfig,
+        logger: this.logger,
+      });
     }
 
-    if (options?.rpcClient) {
-      this.rpc = options.rpcClient;
-    } else {
-      const allowHttp = this.rpcUrl.startsWith("http://");
-      const baseRpc = new rpc.Server(this.rpcUrl, { allowHttp });
-
-      // Apply concurrency control if enabled
-      if (this.concurrencyEnabled) {
-        this.rpc = createConcurrencyControlledClient(baseRpc, this.concurrencyConfig);
-      } else {
-        this.rpc = baseRpc;
-      }
-    }
+    this.rpc = container.getRpcClient({
+      rpcUrl: this.rpcUrl,
+      allowHttp: this.rpcUrl.startsWith("http://"),
+      concurrencyEnabled: this.concurrencyEnabled,
+      concurrencyConfig: this.concurrencyConfig,
+    });
   }
 
 
@@ -549,55 +550,6 @@ this.accountCache = new Map();
         return new Account(publicKey, newSequence.toString());
       }
       // No cache available, throw error
-   * Retrieves an account's information with offline cache fallback.
-   * Tries to fetch from the network first, but falls back to cached data if the network is unavailable.
-   * The cache is valid for 5 seconds and sequence numbers are incremented for sequential offline builds.
-   * @param publicKey - The account's public key (G-prefixed string)
-   * @returns The account information including sequence number and balances
-   * @throws AxionveraError if both network fetch fails and no valid cache exists
-   * @example
-   * ```typescript
-   * import { StellarClient } from "axionvera-sdk";
-   *
-   * const client = new StellarClient({ network: "testnet" });
-   *
-   * // First call fetches from network and caches the result
-   * const account1 = await client.getAccountWithCache("GD5JPQ7VKFOVRWPOEX74JYXHHFNTFZ2JE5WZ4K2MWTROVHMWHD7KUZ2V");
-   * console.log("Sequence:", account1.sequenceNumber().toString());
-   *
-   * // If network fails within 5 seconds, returns cached account with incremented sequence
-   * const account2 = await client.getAccountWithCache("GD5JPQ7VKFOVRWPOEX74JYXHHFNTFZ2JE5WZ4K2MWTROVHMWHD7KUZ2V");
-   * console.log("Cached sequence:", account2.sequenceNumber().toString());
-   * ```
-   */
-  async getAccountWithCache(publicKey: string): Promise<Account> {
-    try {
-      // Try to fetch from network
-      const account = await this.getAccount(publicKey);
-      // Update cache on success
-      this.accountCache.set(publicKey, {
-        account,
-        timestamp: Date.now()
-      });
-      return account;
-    } catch (error) {
-      // Network failed, check cache
-      const cached = this.accountCache.get(publicKey);
-      if (cached && (Date.now() - cached.timestamp < this.CACHE_TTL)) {
-        this.logger.debug(`Using cached account for ${publicKey}`);
-        // Increment sequence for sequential offline builds
-        const currentSequence = cached.account.sequenceNumber();
-        const newSequence = currentSequence + 1n;
-        // Create new account with incremented sequence
-        const cachedAccount = new Account(publicKey, newSequence.toString());
-        // Update cache with incremented sequence
-        this.accountCache.set(publicKey, {
-          account: cachedAccount,
-          timestamp: cached.timestamp
-        });
-        return cachedAccount;
-      }
-      // No valid cache, throw error
       throw new AxionveraError(
         `Failed to fetch account and no valid cache available for ${publicKey}`,
         { originalError: error }
