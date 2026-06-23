@@ -63,8 +63,8 @@ function isLocalhostUrl(url: string): boolean {
 export type StellarClientOptions = {
   network?: AxionveraNetwork;
   rpcUrl?: string;
+  rpcUrls?: string[];
   networkPassphrase?: string;
-  rpcClient?: rpc.Server;
   concurrencyConfig?: Partial<ConcurrencyConfig>;
   retryConfig?: Partial<RetryConfig>;
   logLevel?: LogLevel;
@@ -241,12 +241,14 @@ export abstract class BaseStellarRpcClient {
 export class StellarClient extends BaseStellarRpcClient {
   /** The network this client is connected to. */
   readonly network: AxionveraNetwork;
-  /** The RPC URL this client uses. */
-  readonly rpcUrl: string;
+  /** The RPC URL(s) this client uses (for failover). */
+  readonly rpcUrls: string[];
+  /** The current RPC URL index being used. */
+  private currentRpcIndex: number;
   /** The network passphrase for transaction signing. */
   readonly networkPassphrase: string;
-  /** The underlying RPC server instance. */
-  readonly rpc: rpc.Server;
+  /** The underlying RPC server instances (one per URL). */
+  private rpcServers: rpc.Server[];
   /** The HTTP client with retry interceptors. */
   readonly httpClient;
   /** The effective retry configuration after merging with defaults. */
@@ -273,39 +275,52 @@ export class StellarClient extends BaseStellarRpcClient {
   /** Optional hard ceiling for the total prepared fee. */
   private readonly maxFeeLimit?: bigint;
 
+  /** Get the current RPC URL in use. */
+  get rpcUrl(): string {
+    return this.rpcUrls[this.currentRpcIndex];
+  }
+
+  /** Get the current RPC server in use. */
+  get rpc(): rpc.Server {
+    return this.rpcServers[this.currentRpcIndex];
+  }
+
    /**
     * Creates a new StellarClient instance.
     * @param options - Configuration options
     */
     constructor(options?: StellarClientOptions) {
       const config = resolveNetworkConfig(options);
-      const rpcUrl = config.rpcUrl;
+      const rpcUrls = config.rpcUrls;
       const network = config.network;
       const networkPassphrase = config.networkPassphrase;
-
-      // Validate RPC URL has a protocol
-      if (!rpcUrl.startsWith('http://') && !rpcUrl.startsWith('https://')) {
-        throw new AxionveraError('RPC URL must include a protocol (http:// or https://)');
-      }
-
-      // Security guard: prevent insecure HTTP in production unless explicitly allowed
-      const isProduction = process.env.NODE_ENV === 'production';
-      const isHttp = rpcUrl.startsWith('http://');
-      const isLocalhost = isLocalhostUrl(rpcUrl);
       const allowHttp = options?.allowHttp ?? false;
 
-      if (isProduction && isHttp && !isLocalhost && !allowHttp) {
-        throw new InsecureNetworkError(
-          'Insecure RPC connection in production: HTTP endpoint detected. ' +
-          'Use HTTPS for production or set allowHttp: true to override. ' +
-          'Note: localhost endpoints are always permitted.'
-        );
+      // Validate all RPC URLs have a protocol
+      for (const url of rpcUrls) {
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          throw new AxionveraError('RPC URL must include a protocol (http:// or https://)');
+        }
+
+        // Security guard: prevent insecure HTTP in production unless explicitly allowed
+        const isProduction = process.env.NODE_ENV === 'production';
+        const isHttp = url.startsWith('http://');
+        const isLocalhost = isLocalhostUrl(url);
+
+        if (isProduction && isHttp && !isLocalhost && !allowHttp) {
+          throw new InsecureNetworkError(
+            'Insecure RPC connection in production: HTTP endpoint detected. ' +
+            'Use HTTPS for production or set allowHttp: true to override. ' +
+            'Note: localhost endpoints are always permitted.'
+          );
+        }
       }
 
       super();
 
       this.network = network;
-      this.rpcUrl = rpcUrl;
+      this.rpcUrls = rpcUrls;
+      this.currentRpcIndex = 0;
       this.networkPassphrase = networkPassphrase;
 
      this.concurrencyConfig = {
@@ -333,7 +348,17 @@ this.accountFetchTimeoutMs = options?.accountFetchTimeoutMs ?? 2000;
       this.maxFeeLimit = BigInt(options.maxFeeLimit);
     }
 
-    this.logger.info(`Initializing StellarClient for ${this.network} at ${this.rpcUrl}`);
+    this.logger.info(`Initializing StellarClient for ${this.network} with RPC URLs: ${this.rpcUrls.join(', ')}`);
+
+    // Initialize RPC servers for all URLs
+    this.rpcServers = this.rpcUrls.map((url) => {
+      const isHttp = url.startsWith("http://");
+      const baseRpc = new rpc.Server(url, { allowHttp: isHttp || allowHttp });
+      if (this.concurrencyEnabled) {
+        return createConcurrencyControlledClient(baseRpc, this.concurrencyConfig);
+      }
+      return baseRpc;
+    });
 
     // Initialize WebSocket manager if configuration is provided
     if (options?.webSocketConfig) {
@@ -347,57 +372,90 @@ this.accountFetchTimeoutMs = options?.accountFetchTimeoutMs ?? 2000;
         }
       );
     }
+  }
 
-    if (options?.rpcClient) {
-      this.rpc = options.rpcClient;
-    } else {
-      const allowHttp = this.rpcUrl.startsWith("http://");
-      const baseRpc = new rpc.Server(this.rpcUrl, { allowHttp });
+  /**
+   * Tries to switch to the next available RPC URL.
+   * @returns Whether a new RPC server was successfully switched to
+   */
+  private trySwitchToNextRpc(): boolean {
+    if (this.rpcUrls.length <= 1) {
+      return false;
+    }
 
-      // Apply concurrency control if enabled
-      if (this.concurrencyEnabled) {
-        this.rpc = createConcurrencyControlledClient(baseRpc, this.concurrencyConfig);
-      } else {
-        this.rpc = baseRpc;
+    this.currentRpcIndex = (this.currentRpcIndex + 1) % this.rpcUrls.length;
+    this.logger.info(`Switched to RPC URL: ${this.rpcUrl}`);
+    return true;
+  }
+
+  /**
+   * Executes an RPC function with failover support.
+   * @param fn The function that uses the current RPC server
+   * @returns The result of the function
+   */
+  private async executeWithFailover<T>(fn: (rpc: rpc.Server) => Promise<T>): Promise<T> {
+    let lastError: unknown;
+    let attempts = 0;
+    const maxAttempts = this.rpcUrls.length;
+
+    while (attempts < maxAttempts) {
+      try {
+        return await fn(this.rpc);
+      } catch (error: unknown) {
+        lastError = error;
+        attempts++;
+        
+        if (attempts < maxAttempts) {
+          this.logger.warn(`RPC call failed to ${this.rpcUrl}, trying next URL...`);
+          this.trySwitchToNextRpc();
+        }
       }
     }
+
+    throw lastError;
   }
 
   /**
    * Checks the health of the RPC server.
-   * Automatically retries on failure.
+   * Automatically retries and fails over to backup URLs on failure.
    * @returns The health check response
    */
   async getHealth(): Promise<ValidatedGetHealthResponse> {
     this.logger.debug("Fetching network health");
     return this.executeWithErrorHandling(async () => {
-      const response = await retry(() => this.rpc.getHealth(), this.retryConfig);
+      const response = await this.executeWithFailover(rpc => 
+        retry(() => rpc.getHealth(), this.retryConfig)
+      );
       return validateRpcResponse(GetHealthResponseSchema, response, 'getHealth');
     }, "Failed to fetch network health");
   }
 
   /**
    * Retrieves the network configuration from the RPC server.
-   * Automatically retries on failure.
+   * Automatically retries and fails over to backup URLs on failure.
    * @returns The network configuration
    */
   async getNetwork(): Promise<unknown> {
     this.logger.debug("Fetching network configuration");
     return this.executeWithErrorHandling(
-      () => retry(() => this.rpc.getNetwork(), this.retryConfig),
+      () => this.executeWithFailover(rpc => 
+        retry(() => rpc.getNetwork(), this.retryConfig)
+      ),
       "Failed to fetch network configuration"
     );
   }
 
   /**
    * Gets the latest ledger sequence number.
-   * Automatically retries on failure.
+   * Automatically retries and fails over to backup URLs on failure.
    * @returns The latest ledger info
    */
   async getLatestLedger(): Promise<unknown> {
     this.logger.debug("Fetching latest ledger");
     return this.executeWithErrorHandling(
-      () => retry(() => this.rpc.getLatestLedger(), this.retryConfig),
+      () => this.executeWithFailover(rpc => 
+        retry(() => rpc.getLatestLedger(), this.retryConfig)
+      ),
       "Failed to fetch latest ledger"
     );
   }
@@ -428,14 +486,16 @@ this.accountFetchTimeoutMs = options?.accountFetchTimeoutMs ?? 2000;
 
   /**
    * Retrieves an account's information from the network.
-   * Automatically retries on failure.
+   * Automatically retries and fails over to backup URLs on failure.
    * @param publicKey - The account's public key
    * @returns The account information
    */
   async getAccount(publicKey: string): Promise<Account> {
     this.logger.debug(`Fetching account ${publicKey}`);
     return this.executeWithErrorHandling(
-      () => retry(() => this.rpc.getAccount(publicKey), this.retryConfig),
+      () => this.executeWithFailover(rpc => 
+        retry(() => rpc.getAccount(publicKey), this.retryConfig)
+      ),
       `Failed to fetch account ${publicKey}`
     );
   }
@@ -825,9 +885,8 @@ this.accountFetchTimeoutMs = options?.accountFetchTimeoutMs ?? 2000;
       const tx = builder.setTimeout(timeoutInSeconds).build();
 
       // Simulate the combined transaction
-      const result = await retry(
-        () => this.rpc.simulateTransaction(tx),
-        this.retryConfig
+      const result = await this.executeWithFailover(rpc => 
+        retry(() => rpc.simulateTransaction(tx), this.retryConfig)
       );
 
       // Return only the results array
@@ -968,14 +1027,16 @@ this.accountFetchTimeoutMs = options?.accountFetchTimeoutMs ?? 2000;
 
   /**
    * Retrieves the status of a submitted transaction.
-   * Automatically retries on failure.
+   * Automatically retries and fails over to backup URLs on failure.
    * @param hash - The transaction hash
    * @returns The transaction status response
    */
   async getTransaction(hash: string): Promise<ValidatedGetTransactionResponse> {
     this.logger.debug(`Fetching transaction status for ${hash}`);
     return this.executeWithErrorHandling(async () => {
-      const response = await retry(() => this.rpc.getTransaction(hash), this.retryConfig);
+      const response = await this.executeWithFailover(rpc => 
+        retry(() => rpc.getTransaction(hash), this.retryConfig)
+      );
       return validateRpcResponse(GetTransactionResponseSchema, response, 'getTransaction');
     }, `Failed to fetch transaction ${hash}`);
   }
