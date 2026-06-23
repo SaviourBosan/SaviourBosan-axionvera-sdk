@@ -29,6 +29,31 @@ export {
   normalizeSimulationError,
 } from './errors/axionveraError';
 
+// Dependency Injection
+export {
+  ServiceContainer,
+  createServiceContainer,
+  defaultRpcClientFactory,
+  defaultHttpClientFactory,
+  defaultLoggerFactory,
+  defaultWebSocketManagerFactory,
+} from './core/serviceContainer';
+export type {
+  CoreServices,
+  ServiceOverrides,
+  RpcClientFactory,
+  HttpClientFactory,
+  LoggerFactory,
+  WebSocketManagerFactory,
+  RpcClientFactoryOptions,
+  HttpClientFactoryOptions,
+  WebSocketManagerFactoryOptions,
+  RpcServer,
+  HttpClient,
+  LoggerService,
+  WebSocketManagerService,
+} from './core/serviceInterfaces';
+
 // Client
 export { StellarClient, HYDRATION_STATE_VERSION } from './client/stellarClient';
 export { FaucetClient } from './client/faucetClient';
@@ -40,6 +65,8 @@ export type {
 } from './client/stellarClient';
 export type { StellarClientOptions } from './client/stellarClient';
 export type { LogLevel, CustomLogger } from './utils/logger';
+export { MiddlewarePipeline } from './middleware';
+export type { Middleware, MiddlewareContext, MiddlewareRegistration, MiddlewareWorkflow, MiddlewareStage, MiddlewarePipelineOptions } from './middleware';
 export type {
   StellarClientOptions,
   PendingTransaction,
@@ -68,6 +95,12 @@ export type {
 export { Vault } from './contracts/vault';
 export { VaultABI } from './contracts/abis/VaultABI';
 export type { VaultConfig, DepositParams, WithdrawParams, VaultInfo } from './contracts/vault';
+
+
+// Discovery
+export { DefaultContractDiscoveryService, contractDiscovery, DefaultContractDescriptors, VaultContractDescriptor } from './discovery';
+export { CapabilityRegistry } from './registry';
+export type { ContractCapability, ContractDescriptor, ContractDiscoveryService, ContractMethodDescriptor, DiscoveryValidationResult } from './discovery';
 
 // Wallet
 export { LocalKeypairWalletConnector } from './wallet/walletConnector';
@@ -114,6 +147,11 @@ export { parseEvents, decodeSorobanSymbol } from './utils/soroban';
 export type { ParsedEvent, ParseEventsOptions, DecodedTopic } from './utils/soroban';
 export { isValidXDR, assertValidXDR, MAX_XDR_STRING_LENGTH } from './utils/xdrValidator';
 
+
+// Profiling
+export { ProfilingService, profilingService } from './profiling';
+export type { ProfileOptions, ProfiledCallMetric, ProfilingConfig, ProfilingLevel, ProfilingReport } from './profiling';
+
 // Testing & MSW
 // export * from './test/msw/setup';
 // export * from './test/msw/handlers';
@@ -121,3 +159,16 @@ export { isValidXDR, assertValidXDR, MAX_XDR_STRING_LENGTH } from './utils/xdrVa
 export * from './test/msw/setup';
 export * from './test/msw/handlers';
 export { server } from './test/msw/server';
+
+// Replay Framework
+export { InteractionRecorder, ReplayEngine, ReplayValidator } from './replay';
+export type {
+  ContractHandlers,
+  RecordedInteraction,
+  RecordingMetadata,
+  ReplaySession,
+  ReplayResult,
+  ValidationResult,
+  ReplayValidationReport,
+  ReplayOptions,
+} from './replay';
