@@ -172,3 +172,96 @@ export type {
   ReplayValidationReport,
   ReplayOptions,
 } from './replay';
+
+// Transaction Lifecycle Tracking
+export { TransactionLifecycleState, LifecycleStateMachine } from './lifecycle';
+export type { LifecycleTransitionRecord } from './lifecycle';
+export { InvalidLifecycleTransitionError, TransactionNotTrackedError } from './lifecycle';
+export { LifecycleEventEmitter } from './events';
+export type {
+  LifecycleEvent,
+  LifecycleEventType,
+  LifecycleEventListener,
+  LifecycleEventFilter,
+} from './events';
+export { TransactionLifecycleManager } from './transactions';
+export type {
+  TransactionLifecycleRecord,
+  CreateTransactionOptions,
+  TransactionStatusQuery,
+} from './transactions';
+
+// Offline Transaction Creation Workflow
+export { OfflineTransactionBuilder, MAX_OPERATIONS_PER_TRANSACTION } from './transactions';
+export { OFFLINE_TRANSACTION_PACKAGE_VERSION } from './transactions';
+export type {
+  OfflineSourceAccount,
+  OfflineTransactionBuilderOptions,
+  OfflineTransactionValidationResult,
+  OfflineTransactionPackage,
+} from './transactions';
+
+// Contract Schema Validation Framework
+export { SchemaValidationError } from './errors/axionveraError';
+export type { SchemaValidationErrorOptions } from './errors/axionveraError';
+export {
+  ContractValidationEngine,
+  defaultValidationEngine,
+  validateAgainstSchema,
+  withSchemaValidation,
+  customRule,
+  positiveBigIntSchema,
+  nonNegativeBigIntSchema,
+  nonEmptyStringSchema,
+  stellarAccountIdSchema,
+  stellarContractIdSchema,
+  numberInRangeSchema,
+} from './validation';
+export type {
+  AnyValidationSchema,
+  ContractMethodSchema,
+  ValidationIssue,
+  ValidationKind,
+} from './types/validation';
+export {
+  VAULT_CONTRACT_ID,
+  VaultDepositParamsSchema,
+  VaultWithdrawParamsSchema,
+  VaultInfoResultSchema,
+  VaultBalanceResultSchema,
+} from './contracts/contractSchemas';
+
+// Contract Migration Support Toolkit
+export { MigrationStateValidationError, MigrationPathNotFoundError } from './errors/axionveraError';
+export type { MigrationStateValidationErrorOptions } from './errors/axionveraError';
+export {
+  MigrationRegistry,
+  defaultMigrationRegistry,
+  MigrationStateValidator,
+  defaultMigrationStateValidator,
+  MigrationRunner,
+  defaultMigrationRunner,
+  summarizeMigrationReport,
+  serializeMigrationReport,
+  MigrationStatus,
+  MigrationStepStatus,
+} from './migrations';
+export type {
+  AnyMigrationStep,
+  MigrationContext,
+  MigrationPlan,
+  MigrationReport,
+  MigrationStepDefinition,
+  MigrationStepResult,
+  RunMigrationOptions,
+  RunMigrationResult,
+} from './migrations';
+export {
+  VAULT_MIGRATION_CONTRACT_ID,
+  VaultStateV1Schema,
+  VaultStateV2Schema,
+  VaultStateV3Schema,
+  vaultV1ToV2Migration,
+  vaultV2ToV3Migration,
+} from './contracts/contractMigrations';
+export type { VaultStateV1, VaultStateV2, VaultStateV3 } from './contracts/contractMigrations';
