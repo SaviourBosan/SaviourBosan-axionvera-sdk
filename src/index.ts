@@ -52,6 +52,12 @@ export { Vault } from './contracts/vault';
 export { VaultABI } from './contracts/abis/VaultABI';
 export type { VaultConfig, DepositParams, WithdrawParams, VaultInfo } from './contracts/vault';
 
+
+// Discovery
+export { DefaultContractDiscoveryService, contractDiscovery, DefaultContractDescriptors, VaultContractDescriptor } from './discovery';
+export { CapabilityRegistry } from './registry';
+export type { ContractCapability, ContractDescriptor, ContractDiscoveryService, ContractMethodDescriptor, DiscoveryValidationResult } from './discovery';
+
 // Wallet
 export { LocalKeypairWalletConnector } from './wallet/walletConnector';
 export { LocalKeypairWalletConnector, MockWalletConnector } from './wallet/walletConnector';
