@@ -9,12 +9,16 @@ import {
   SorobanDataBuilder,
   Transaction,
   TransactionBuilder,
-  xdr
-} from "@stellar/stellar-sdk";
+  xdr,
+} from '@stellar/stellar-sdk';
 
-import { AxionveraNetwork, resolveNetworkConfig } from "../utils/networkConfig";
-import { ConcurrencyConfig, DEFAULT_CONCURRENCY_CONFIG, createConcurrencyControlledClient } from "../utils/concurrencyQueue";
-import { RetryConfig, createHttpClientWithRetry, retry } from "../utils/httpInterceptor";
+import { AxionveraNetwork, resolveNetworkConfig } from '../utils/networkConfig';
+import {
+  ConcurrencyConfig,
+  DEFAULT_CONCURRENCY_CONFIG,
+  createConcurrencyControlledClient,
+} from '../utils/concurrencyQueue';
+import { RetryConfig, createHttpClientWithRetry, retry } from '../utils/httpInterceptor';
 import {
   validateRpcResponse,
   GetHealthResponseSchema,
@@ -22,18 +26,31 @@ import {
   GetTransactionResponseSchema,
   ValidatedGetHealthResponse,
   ValidatedGetTransactionResponse,
-} from "../utils/rpcSchemas";
+} from '../utils/rpcSchemas';
 import { assertValidXDR } from '../utils/xdrValidator';
-import { normalizeRpcError, normalizeTransactionError, TimeoutError, TransactionTimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError, ValidationError, InvalidXDRError, toAxionveraError } from "../errors/axionveraError";
-import { WebSocketManager } from "./websocket/websocketManager";
-import { WebSocketConfig } from "./websocket/types";
-import { Logger } from "../utils/logger";
+import {
+  normalizeRpcError,
+  normalizeTransactionError,
+  TimeoutError,
+  TransactionTimeoutError,
+  InsecureNetworkError,
+  AxionveraError,
+  AxionveraRPCError,
+  SimulationFailedError,
+  ValidationError,
+  InvalidXDRError,
+  toAxionveraError,
+} from '../errors/axionveraError';
+import { WebSocketManager } from './websocket/websocketManager';
+import { WebSocketConfig } from './websocket/types';
+import { Logger } from '../utils/logger';
 import {
   RpcEndpointStatus,
   RpcHealthMonitor,
   RpcHealthMonitorConfig,
-  RpcHealthStatusReport
-} from "../monitoring";
+  RpcHealthStatusReport,
+} from '../monitoring';
+const DEFAULT_FEE_BUFFER_MULTIPLIER = 1.15;
 
 /**
  * Checks if a URL points to a localhost address.
@@ -43,9 +60,7 @@ import {
 function isLocalhostUrl(url: string): boolean {
   try {
     const hostname = new URL(url).hostname;
-    return hostname === 'localhost' ||
-           hostname === '127.0.0.1' ||
-           hostname === '::1';
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
   } catch {
     return false;
   }
@@ -59,7 +74,7 @@ export type StellarClientOptions = {
   concurrencyConfig?: Partial<ConcurrencyConfig>;
   retryConfig?: Partial<RetryConfig>;
   webSocketConfig?: WebSocketConfig;
-  monitoringConfig?: Partial<Omit<RpcHealthMonitorConfig, "endpoints">> & {
+  monitoringConfig?: Partial<Omit<RpcHealthMonitorConfig, 'endpoints'>> & {
     enabled?: boolean;
   };
   logger?: Logger;
@@ -86,10 +101,10 @@ export type GetContractEventsOptions = {
   limit?: number;
   cursor?: string;
   fetchAll?: boolean;
-  startTime?: Date | string | number | "last24Hours";
+  startTime?: Date | string | number | 'last24Hours';
 };
 
-export type ContractEventResult = Omit<rpc.Api.EventResponse, "topic" | "value"> & {
+export type ContractEventResult = Omit<rpc.Api.EventResponse, 'topic' | 'value'> & {
   topic: unknown[];
   value: unknown;
 };
@@ -155,7 +170,7 @@ export interface TrackTransactionOptions {
   label?: string;
 }
 
-const DATE_MARKER = "__date" as const;
+const DATE_MARKER = '__date' as const;
 
 /** Walk a value, replacing Date instances with `{ __date: ISO }` markers. */
 function freezeDates(value: SerializableValue): SerializableValue {
@@ -165,10 +180,12 @@ function freezeDates(value: SerializableValue): SerializableValue {
   if (Array.isArray(value)) {
     return value.map((item) => freezeDates(item));
   }
-  if (value !== null && typeof value === "object") {
+  if (value !== null && typeof value === 'object') {
     const out: { [key: string]: SerializableValue } = {};
     for (const key of Object.keys(value)) {
-      out[key] = freezeDates((value as { [key: string]: SerializableValue })[key] as SerializableValue);
+      out[key] = freezeDates(
+        (value as { [key: string]: SerializableValue })[key] as SerializableValue
+      );
     }
     return out;
   }
@@ -180,10 +197,10 @@ function thawDates(value: SerializableValue): SerializableValue {
   if (Array.isArray(value)) {
     return value.map((item) => thawDates(item));
   }
-  if (value !== null && typeof value === "object" && !(value instanceof Date)) {
+  if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
     const obj = value as { [key: string]: SerializableValue };
     const marker = obj[DATE_MARKER];
-    if (typeof marker === "string" && Object.keys(obj).length === 1) {
+    if (typeof marker === 'string' && Object.keys(obj).length === 1) {
       const parsed = new Date(marker);
       if (!Number.isNaN(parsed.getTime())) {
         return parsed;
@@ -292,52 +309,54 @@ export class StellarClient {
    * });
    * ```
    */
-   constructor(options?: StellarClientOptions) {
-     const config = resolveNetworkConfig(options);
-     this.network = config.network;
-     this.rpcUrl = config.rpcUrl;
-     this.networkPassphrase = config.networkPassphrase;
+  constructor(options?: StellarClientOptions) {
+    const config = resolveNetworkConfig(options);
+    this.network = config.network;
+    this.rpcUrl = config.rpcUrl;
+    this.networkPassphrase = config.networkPassphrase;
 
-     // Validate RPC URL has a protocol
-     if (!this.rpcUrl.startsWith('http://') && !this.rpcUrl.startsWith('https://')) {
-       throw new AxionveraError('RPC URL must include a protocol (http:// or https://)');
-     }
+    // Validate RPC URL has a protocol
+    if (!this.rpcUrl.startsWith('http://') && !this.rpcUrl.startsWith('https://')) {
+      throw new AxionveraError('RPC URL must include a protocol (http:// or https://)');
+    }
 
-     // Security guard: prevent insecure HTTP in production unless explicitly allowed
-     const isProduction = process.env.NODE_ENV === 'production';
-     const isHttp = this.rpcUrl.startsWith('http://');
-     const isLocalhost = isLocalhostUrl(this.rpcUrl);
-     const allowHttp = options?.allowHttp ?? false;
+    // Security guard: prevent insecure HTTP in production unless explicitly allowed
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isHttp = this.rpcUrl.startsWith('http://');
+    const isLocalhost = isLocalhostUrl(this.rpcUrl);
+    const allowHttp = options?.allowHttp ?? false;
 
-     if (isProduction && isHttp && !isLocalhost && !allowHttp) {
-       throw new InsecureNetworkError(
-         'Insecure RPC connection in production: HTTP endpoint detected. ' +
-         'Use HTTPS for production or set allowHttp: true to override. ' +
-         'Note: localhost endpoints are always permitted.'
-       );
-     }
+    if (isProduction && isHttp && !isLocalhost && !allowHttp) {
+      throw new InsecureNetworkError(
+        'Insecure RPC connection in production: HTTP endpoint detected. ' +
+          'Use HTTPS for production or set allowHttp: true to override. ' +
+          'Note: localhost endpoints are always permitted.'
+      );
+    }
 
-     this.concurrencyConfig = {
+    this.concurrencyConfig = {
       ...DEFAULT_CONCURRENCY_CONFIG,
-      ...options?.concurrencyConfig
+      ...options?.concurrencyConfig,
     };
     this.concurrencyEnabled = !!options?.concurrencyConfig;
     this.retryConfig = options?.retryConfig ?? {};
     this.httpClient = createHttpClientWithRetry(this.retryConfig);
     this.logger = options?.logger ?? new Logger();
-this.accountFetchTimeoutMs = options?.accountFetchTimeoutMs ?? 2000;
+    this.accountFetchTimeoutMs = options?.accountFetchTimeoutMs ?? 2000;
     this.cacheTtlMs = options?.cacheTtlMs ?? 5000;
     this.accountSequenceCache = new Map();
-this.accountCache = new Map();
+    this.accountCache = new Map();
     this.feeBufferMultiplier = options?.feeBufferMultiplier ?? DEFAULT_FEE_BUFFER_MULTIPLIER;
 
     if (!Number.isFinite(this.feeBufferMultiplier) || this.feeBufferMultiplier < 1) {
-      throw new ValidationError("feeBufferMultiplier must be a finite number greater than or equal to 1");
+      throw new ValidationError(
+        'feeBufferMultiplier must be a finite number greater than or equal to 1'
+      );
     }
 
     if (options?.maxFeeLimit !== undefined) {
       if (!Number.isInteger(options.maxFeeLimit) || options.maxFeeLimit <= 0) {
-        throw new ValidationError("maxFeeLimit must be a positive integer");
+        throw new ValidationError('maxFeeLimit must be a positive integer');
       }
 
       this.maxFeeLimit = BigInt(options.maxFeeLimit);
@@ -345,21 +364,18 @@ this.accountCache = new Map();
 
     // Initialize WebSocket manager if configuration is provided
     if (options?.webSocketConfig) {
-      this.webSocketManager = new WebSocketManager(
-        this.rpcUrl,
-        options.webSocketConfig,
-        {
-          onEvent: (event) => this.logger.debug('WebSocket event received:', event),
-          onConnectionChange: (connected) => this.logger.debug(`WebSocket connection changed: ${connected}`),
-          logger: this.logger,
-        }
-      );
+      this.webSocketManager = new WebSocketManager(this.rpcUrl, options.webSocketConfig, {
+        onEvent: (event) => this.logger.debug('WebSocket event received:', event),
+        onConnectionChange: (connected) =>
+          this.logger.debug(`WebSocket connection changed: ${connected}`),
+        logger: this.logger,
+      });
     }
 
     if (options?.rpcClient) {
       this.rpc = options.rpcClient;
     } else {
-      const allowHttp = this.rpcUrl.startsWith("http://");
+      const allowHttp = this.rpcUrl.startsWith('http://');
       const baseRpc = new rpc.Server(this.rpcUrl, { allowHttp });
 
       // Apply concurrency control if enabled
@@ -383,9 +399,9 @@ this.accountCache = new Map();
             url: this.rpcUrl,
             network: this.network,
             rpcClient: this.rpc,
-            allowHttp
-          }
-        ]
+            allowHttp,
+          },
+        ],
       });
     }
   }
@@ -510,7 +526,7 @@ this.accountCache = new Map();
         endLedger: normalizedEndLedger,
         limit: options.limit,
         cursor: options.cursor,
-        fetchAll: options.fetchAll ?? false
+        fetchAll: options.fetchAll ?? false,
       });
     } catch (error) {
       throw new AxionveraRPCError(
@@ -584,7 +600,7 @@ this.accountCache = new Map();
       this.getAccount(publicKey),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`Account fetch timeout after ${timeoutMs}ms`)), timeoutMs)
-      )
+      ),
     ]);
   }
 
@@ -596,7 +612,7 @@ this.accountCache = new Map();
   private updateCache(publicKey: string, sequence: string): void {
     this.accountSequenceCache.set(publicKey, {
       sequence: BigInt(sequence),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 
@@ -605,7 +621,9 @@ this.accountCache = new Map();
    * @param publicKey - The account's public key
    * @returns The cached sequence info or undefined if invalid
    */
-  private getCachedSequence(publicKey: string): { sequence: bigint; timestamp: number } | undefined {
+  private getCachedSequence(
+    publicKey: string
+  ): { sequence: bigint; timestamp: number } | undefined {
     const cached = this.accountSequenceCache.get(publicKey);
     if (!cached) return undefined;
 
@@ -641,25 +659,27 @@ this.accountCache = new Map();
    */
   handleSubmissionError(error: unknown, publicKey?: string): boolean {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     // Check for Stellar sequence error patterns
     const sequenceErrorPatterns = [
       'tx_bad_seq',
       'bad sequence',
       'sequence number',
-      'sequence mismatch'
+      'sequence mismatch',
     ];
-    
-    const isSequenceError = sequenceErrorPatterns.some(pattern =>
+
+    const isSequenceError = sequenceErrorPatterns.some((pattern) =>
       errorMessage.toLowerCase().includes(pattern)
     );
-    
+
     if (isSequenceError) {
-      this.logger.warn(`Sequence error detected, clearing cache for ${publicKey || 'all accounts'}`);
+      this.logger.warn(
+        `Sequence error detected, clearing cache for ${publicKey || 'all accounts'}`
+      );
       this.clearCache(publicKey);
       return true;
     }
-    
+
     return false;
   }
 
@@ -671,18 +691,18 @@ this.accountCache = new Map();
   cleanupExpiredCache(): number {
     let removed = 0;
     const now = Date.now();
-    
+
     for (const [publicKey, cached] of this.accountSequenceCache.entries()) {
       if (now - cached.timestamp > this.cacheTtlMs) {
         this.accountSequenceCache.delete(publicKey);
         removed++;
       }
     }
-    
+
     if (removed > 0) {
       this.logger.debug(`Cleaned up ${removed} expired cache entries`);
     }
-    
+
     return removed;
   }
 
@@ -690,20 +710,20 @@ this.accountCache = new Map();
    * Submits multiple transactions in sequential order to prevent sequence conflicts.
    * This is critical when building transactions offline with cached sequences.
    * Transactions are submitted one at a time, waiting for each to succeed before submitting the next.
-   * 
+   *
    * @param transactions - Array of signed transactions to submit
    * @param options - Submission options
    * @param options.onProgress - Callback called after each transaction submission
    * @param options.sourcePublicKey - The source account public key for error handling
    * @returns Array of submission results in the same order as input transactions
-   * 
+   *
    * @example
    * ```typescript
    * // Build transactions while offline
    * const tx1 = await buildTransactionOffline(account1);
    * const tx2 = await buildTransactionOffline(account1);
    * const tx3 = await buildTransactionOffline(account1);
-   * 
+   *
    * // Submit them in order when back online
    * const results = await client.submitTransactionsSequentially(
    *   [tx1, tx2, tx3],
@@ -722,37 +742,37 @@ this.accountCache = new Map();
     }
   ): Promise<TransactionSendResult[]> {
     const results: TransactionSendResult[] = [];
-    
+
     for (let i = 0; i < transactions.length; i++) {
       try {
         const result = await this.sendTransaction(transactions[i]);
         results.push(result);
-        
+
         if (options?.onProgress) {
           options.onProgress(i, result);
         }
-        
+
         // If successful, wait a brief moment for the transaction to be processed
         // This helps prevent race conditions with sequence numbers
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       } catch (error) {
         // Handle submission error and clear cache if it's a sequence error
         const wasSequenceError = this.handleSubmissionError(error, options?.sourcePublicKey);
-        
+
         // Re-throw with additional context
         throw new Error(
           `Transaction ${i + 1}/${transactions.length} failed${wasSequenceError ? ' (cache cleared due to sequence error)' : ''}: ${error instanceof Error ? error.message : String(error)}`
         );
       }
     }
-    
+
     return results;
   }
 
   /**
    * Validates transaction fee based on current network conditions.
    * This is useful when building transactions offline and needing to validate fees before submission.
-   * 
+   *
    * @param transaction - The transaction to validate
    * @param options - Fee validation options
    * @param options.minFee - Minimum acceptable fee in stroops
@@ -760,18 +780,18 @@ this.accountCache = new Map();
    * @param options.simulate - Whether to simulate to get recommended fee (default: true)
    * @returns The recommended fee if simulation succeeds, or current fee if validation passes
    * @throws Error if fee is too low or simulation fails
-   * 
+   *
    * @example
    * ```typescript
    * // Build transaction offline
    * const tx = await buildTransactionOffline(account);
-   * 
+   *
    * // Back online - validate fee
    * const recommendedFee = await client.validateFee(tx, {
    *   minFee: 100000,
    *   maxFee: 500000
    * });
-   * 
+   *
    * // If recommended fee is different, rebuild transaction with new fee
    * if (recommendedFee !== parseInt(tx.fee)) {
    *   const updatedTx = await rebuildTransactionWithNewFee(tx, recommendedFee);
@@ -789,37 +809,41 @@ this.accountCache = new Map();
     const simulate = options?.simulate ?? true;
     const minFee = options?.minFee ?? 100_000;
     const maxFee = options?.maxFee ?? 1_000_000;
-    
+
     const currentFee = parseInt(transaction.fee);
-    
+
     if (currentFee < minFee) {
       throw new Error(`Transaction fee ${currentFee} is below minimum ${minFee}`);
     }
-    
+
     if (currentFee > maxFee) {
       throw new Error(`Transaction fee ${currentFee} exceeds maximum ${maxFee}`);
     }
-    
+
     if (simulate) {
       try {
         const simulation = await this.simulateTransaction(transaction);
-        
+
         if (rpc.Api.isSimulationSuccess(simulation)) {
           // Access the resource fee from simulation result
           const minResourceFee = simulation.minResourceFee ?? 100_000;
           const recommendedFee = parseInt(minResourceFee.toString());
-          
+
           // If recommended fee is significantly higher (20% buffer), recommend it
           if (recommendedFee > currentFee * 1.2) {
-            this.logger.info(`Recommended fee ${recommendedFee} is significantly higher than current ${currentFee}`);
+            this.logger.info(
+              `Recommended fee ${recommendedFee} is significantly higher than current ${currentFee}`
+            );
             return recommendedFee;
           }
         }
       } catch (error) {
-        this.logger.warn(`Fee simulation failed, using original fee: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.warn(
+          `Fee simulation failed, using original fee: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
-    
+
     // Return current fee if validation passes
     return currentFee;
   }
@@ -844,7 +868,7 @@ this.accountCache = new Map();
    */
   clearAccountCache(): void {
     this.accountCache.clear();
-    this.logger.debug("Account cache cleared");
+    this.logger.debug('Account cache cleared');
   }
 
   /**
@@ -963,7 +987,7 @@ this.accountCache = new Map();
       // Build a transaction with all operations
       const builder = new TransactionBuilder(params.sourceAccount, {
         fee: totalFee,
-        networkPassphrase: this.networkPassphrase
+        networkPassphrase: this.networkPassphrase,
       });
 
       // Add all operations to the transaction
@@ -982,10 +1006,9 @@ this.accountCache = new Map();
 
       // Return only the results array
       if (!result.result) {
-        throw new SimulationFailedError(
-          'No results returned from batch simulation',
-          { simulationResult: result }
-        );
+        throw new SimulationFailedError('No results returned from batch simulation', {
+          simulationResult: result,
+        });
       }
 
       return result.result;
@@ -1032,7 +1055,7 @@ this.accountCache = new Map();
       try {
         return await this.rpc.prepareTransaction(tx);
       } catch (error) {
-        throw toAxionveraError(error, "Failed to prepare transaction");
+        throw toAxionveraError(error, 'Failed to prepare transaction');
       }
     }
 
@@ -1045,7 +1068,7 @@ this.accountCache = new Map();
         throw error;
       }
 
-      throw toAxionveraError(error, "Failed to prepare transaction");
+      throw toAxionveraError(error, 'Failed to prepare transaction');
     }
   }
 
@@ -1085,10 +1108,7 @@ this.accountCache = new Map();
         const txXdr = tx.toXDR();
 
         // Sign via wallet connector
-        const signedXdr = await this.wallet.signTransaction(
-          txXdr,
-          this.networkPassphrase
-        );
+        const signedXdr = await this.wallet.signTransaction(txXdr, this.networkPassphrase);
 
         // Sanitize the wallet-returned XDR before parsing to prevent
         // injection / buffer panic from a malicious wallet response.
@@ -1096,31 +1116,27 @@ this.accountCache = new Map();
 
         // Reconstruct signed transaction from XDR
         try {
-          finalTx = TransactionBuilder.fromXDR(
-            signedXdr,
-            this.networkPassphrase
-          );
+          finalTx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
         } catch (err) {
           throw new InvalidXDRError(
             `sendTransaction: wallet returned an XDR string that could not be parsed: ${
               err instanceof Error ? err.message : String(err)
             }`,
             signedXdr,
-            { originalError: err },
+            { originalError: err }
           );
         }
       }
 
       // Submit either original or signed transaction
       const result = await this.rpc.sendTransaction(finalTx);
-      const hash = (result as any).hash ?? (result as any).id ?? "";
-      const status = (result as any).status ?? (result as any).statusText ?? "unknown";
+      const hash = (result as any).hash ?? (result as any).id ?? '';
+      const status = (result as any).status ?? (result as any).statusText ?? 'unknown';
       return { hash, status, raw: result };
     } catch (error) {
       throw normalizeTransactionError(error);
     }
   }
-
 
   /**
    * Retrieves the status of a submitted transaction with automatic retry on failure.
@@ -1183,8 +1199,7 @@ this.accountCache = new Map();
     const intervalMs = options.intervalMs ?? 1_000;
     const submittedAt = new Date();
     const deadline =
-      options.deadline ??
-      new Date(submittedAt.getTime() + (options.timeoutMs ?? 30_000));
+      options.deadline ?? new Date(submittedAt.getTime() + (options.timeoutMs ?? 30_000));
 
     let cancelled: boolean = false;
     const cancel = (): void => {
@@ -1210,15 +1225,13 @@ this.accountCache = new Map();
         while (!cancelled && Date.now() < deadline.getTime()) {
           const res = await this.getTransaction(options.hash);
           const status = (res as { status?: string } | null | undefined)?.status;
-          if (status && status !== "NOT_FOUND") {
+          if (status && status !== 'NOT_FOUND') {
             return res;
           }
           await new Promise<void>((r) => setTimeout(r, intervalMs));
         }
         if (cancelled) {
-          throw new AxionveraError(
-            `Transaction tracking cancelled for ${options.hash}`
-          );
+          throw new AxionveraError(`Transaction tracking cancelled for ${options.hash}`);
         }
         throw new TimeoutError(
           `Timed out waiting for transaction ${options.hash} after ${String(
@@ -1286,9 +1299,10 @@ this.accountCache = new Map();
     const resources = sorobanData.resources();
     const simulatedResourceFee = sorobanData.resourceFee().toBigInt();
     const simulatedTotalFee = BigInt(tx.fee);
-    const simulatedBaseFee = simulatedTotalFee > simulatedResourceFee
-      ? simulatedTotalFee - simulatedResourceFee
-      : BigInt(0);
+    const simulatedBaseFee =
+      simulatedTotalFee > simulatedResourceFee
+        ? simulatedTotalFee - simulatedResourceFee
+        : BigInt(0);
 
     const bufferedResourceFee = multiplyAndCeil(simulatedResourceFee, this.feeBufferMultiplier);
     const bufferedBaseFee = multiplyAndCeil(simulatedBaseFee, this.feeBufferMultiplier);
@@ -1319,7 +1333,7 @@ this.accountCache = new Map();
     return TransactionBuilder.cloneFrom(tx, {
       fee: bufferedBaseFee.toString(),
       networkPassphrase: tx.networkPassphrase,
-      sorobanData: bufferedSorobanData
+      sorobanData: bufferedSorobanData,
     }).build();
   }
 
@@ -1335,9 +1349,9 @@ this.accountCache = new Map();
    * @returns The list of restored {@link TrackedTransaction}s.
    */
   importState(state: ExportedState | string): TrackedTransaction[] {
-    const raw: unknown = typeof state === "string" ? JSON.parse(state) : state;
-    if (!raw || typeof raw !== "object") {
-      throw new AxionveraError("Invalid hydration state: expected object or JSON string");
+    const raw: unknown = typeof state === 'string' ? JSON.parse(state) : state;
+    if (!raw || typeof raw !== 'object') {
+      throw new AxionveraError('Invalid hydration state: expected object or JSON string');
     }
     const parsed = raw as { version?: unknown; pending?: unknown };
     if (parsed.version !== HYDRATION_STATE_VERSION) {
@@ -1346,15 +1360,15 @@ this.accountCache = new Map();
       );
     }
     if (!Array.isArray(parsed.pending)) {
-      throw new AxionveraError("Invalid hydration state: `pending` must be an array");
+      throw new AxionveraError('Invalid hydration state: `pending` must be an array');
     }
 
     const restored: TrackedTransaction[] = [];
     const now = Date.now();
     for (const candidate of parsed.pending as unknown[]) {
-      if (!candidate || typeof candidate !== "object") continue;
+      if (!candidate || typeof candidate !== 'object') continue;
       const entry = candidate as Partial<SerializedPendingTransaction>;
-      if (typeof entry.hash !== "string" || entry.hash.length === 0) continue;
+      if (typeof entry.hash !== 'string' || entry.hash.length === 0) continue;
 
       const existing = this.pendingTransactions.get(entry.hash);
       if (existing) {
@@ -1362,13 +1376,11 @@ this.accountCache = new Map();
         continue;
       }
       const deadline =
-        typeof entry.deadline === "string" ? new Date(entry.deadline) : new Date(NaN);
+        typeof entry.deadline === 'string' ? new Date(entry.deadline) : new Date(NaN);
       if (Number.isNaN(deadline.getTime()) || deadline.getTime() <= now) continue;
 
       const intervalMs =
-        typeof entry.intervalMs === "number" && entry.intervalMs > 0
-          ? entry.intervalMs
-          : 1_000;
+        typeof entry.intervalMs === 'number' && entry.intervalMs > 0 ? entry.intervalMs : 1_000;
       const tracked = this.trackTransaction({
         hash: entry.hash,
         simulationContext: thawContext(entry.simulationContext),
@@ -1383,34 +1395,34 @@ this.accountCache = new Map();
 
   /**
    * Waits for a transaction to be confirmed or rejected with a Promise-based API.
-   * 
+   *
    * This is a convenience wrapper around pollTransaction that provides a simpler,
    * more intuitive API for the common use case of waiting for a transaction to complete.
    * It resolves when the transaction reaches a final state (SUCCESS or FAILED),
    * or rejects if the transaction times out.
-   * 
+   *
    * Similar to waitForTransactionReceipt in EVM libraries like viem, making it easier
    * for developers moving from Ethereum to Stellar/Soroban.
-   * 
+   *
    * @param hash - The transaction hash to wait for
    * @param params - Wait parameters
    * @param params.timeoutMs - Maximum time to wait in milliseconds (default: 30_000)
    * @param params.intervalMs - Time between polls in milliseconds (default: 1_000)
    * @returns Promise that resolves with the transaction result when confirmed, or rejects on timeout/failure
    * @throws TimeoutError if the transaction doesn't reach a final state within timeoutMs
-   * 
+   *
    * @example
    * ```typescript
    * // Simple usage - wait for transaction with defaults (30 seconds)
    * const result = await client.waitForTransaction(txHash);
    * console.log('Transaction confirmed:', result);
-   * 
+   *
    * // With custom timeout and polling interval
    * const result = await client.waitForTransaction(txHash, {
    *   timeoutMs: 60_000,     // Wait up to 60 seconds
    *   intervalMs: 500        // Poll every 500ms
    * });
-   * 
+   *
    * // In a typical usage flow
    * const signed = await client.sendTransaction(tx);
    * try {
@@ -1505,7 +1517,7 @@ this.accountCache = new Map();
           err instanceof Error ? err.message : String(err)
         }`,
         transactionXdr,
-        { originalError: err },
+        { originalError: err }
       );
     }
   }
@@ -1527,9 +1539,9 @@ this.accountCache = new Map();
    */
   static getDefaultNetworkPassphrase(network: AxionveraNetwork): string {
     switch (network) {
-      case "testnet":
+      case 'testnet':
         return Networks.TESTNET;
-      case "mainnet":
+      case 'mainnet':
         return Networks.PUBLIC;
       default:
         throw new AxionveraError(`Unknown network: ${network}`);
@@ -1560,7 +1572,7 @@ this.accountCache = new Map();
     if (!this.concurrencyEnabled) {
       return {
         enabled: false,
-        message: 'Concurrency control is not enabled'
+        message: 'Concurrency control is not enabled',
       };
     }
 
@@ -1568,7 +1580,7 @@ this.accountCache = new Map();
     if ('getStats' in this.rpc && typeof this.rpc.getStats === 'function') {
       return {
         enabled: true,
-        ...this.rpc.getStats()
+        ...this.rpc.getStats(),
       };
     }
 
@@ -1576,7 +1588,7 @@ this.accountCache = new Map();
       enabled: true,
       maxConcurrentRequests: this.concurrencyConfig.maxConcurrentRequests,
       queueTimeout: this.concurrencyConfig.queueTimeout,
-      message: 'Stats not available from wrapped client'
+      message: 'Stats not available from wrapped client',
     };
   }
 
@@ -1606,7 +1618,10 @@ this.accountCache = new Map();
     return Math.max(1, endLedger - ledgersToRewind);
   }
 
-  private resolveStartTimeMs(startTime: Date | string | number | "last24Hours", nowMs: number): number {
+  private resolveStartTimeMs(
+    startTime: Date | string | number | 'last24Hours',
+    nowMs: number
+  ): number {
     if (startTime === 'last24Hours') {
       return nowMs - 24 * 60 * 60 * 1_000;
     }
@@ -1643,7 +1658,10 @@ this.accountCache = new Map();
 
     while (true) {
       try {
-        const response = await retry(() => this.rpc.getEvents(this.buildGetEventsRequest(params, cursor)), this.retryConfig);
+        const response = await retry(
+          () => this.rpc.getEvents(this.buildGetEventsRequest(params, cursor)),
+          this.retryConfig
+        );
         const pageEvents = Array.isArray((response as any).events)
           ? ((response as any).events as rpc.Api.EventResponse[])
           : [];
@@ -1668,7 +1686,7 @@ this.accountCache = new Map();
           const firstHalf = await this.fetchContractEventsRange({
             ...params,
             endLedger: midpoint,
-            cursor
+            cursor,
           });
 
           if (!params.fetchAll) {
@@ -1678,12 +1696,12 @@ this.accountCache = new Map();
           const secondHalf = await this.fetchContractEventsRange({
             ...params,
             startLedger: midpoint + 1,
-            cursor: undefined
+            cursor: undefined,
           });
 
           return {
             events: [...firstHalf.events, ...secondHalf.events],
-            pagingToken: secondHalf.pagingToken ?? firstHalf.pagingToken
+            pagingToken: secondHalf.pagingToken ?? firstHalf.pagingToken,
           };
         }
 
@@ -1704,7 +1722,7 @@ this.accountCache = new Map();
   ): any {
     const filter: any = {
       type: 'contract',
-      contractIds: [params.contractId]
+      contractIds: [params.contractId],
     };
 
     if (params.topicFilters && params.topicFilters.length > 0) {
@@ -1714,7 +1732,7 @@ this.accountCache = new Map();
     const request: any = {
       startLedger: params.startLedger,
       endLedger: params.endLedger,
-      filters: [filter]
+      filters: [filter],
     };
 
     if (params.limit !== undefined || cursor !== undefined) {
@@ -1734,14 +1752,15 @@ this.accountCache = new Map();
     const decodedTopic = Array.isArray((event as any).topic)
       ? ((event as any).topic as string[]).map((entry) => this.decodeScVal(entry))
       : [];
-    const decodedValue = typeof (event as any).value === 'string'
-      ? this.decodeScVal((event as any).value)
-      : (event as any).value;
+    const decodedValue =
+      typeof (event as any).value === 'string'
+        ? this.decodeScVal((event as any).value)
+        : (event as any).value;
 
     return {
       ...(event as any),
       topic: decodedTopic,
-      value: decodedValue
+      value: decodedValue,
     };
   }
 
@@ -1753,7 +1772,10 @@ this.accountCache = new Map();
     }
   }
 
-  private extractPagingToken(response: unknown, events: rpc.Api.EventResponse[]): string | undefined {
+  private extractPagingToken(
+    response: unknown,
+    events: rpc.Api.EventResponse[]
+  ): string | undefined {
     const responseToken = (response as any).pagingToken;
     if (typeof responseToken === 'string' && responseToken.length > 0) {
       return responseToken;
@@ -1783,15 +1805,9 @@ this.accountCache = new Map();
     pollingIntervalMs = 5000
   ): ContractEventEmitter {
     let emitter: ContractEventEmitter;
-    emitter = new ContractEventEmitter(
-      this,
-      contractId,
-      topics,
-      pollingIntervalMs,
-      () => {
-        this.eventEmitters.delete(emitter);
-      }
-    );
+    emitter = new ContractEventEmitter(this, contractId, topics, pollingIntervalMs, () => {
+      this.eventEmitters.delete(emitter);
+    });
 
     this.eventEmitters.add(emitter);
     emitter.start();
@@ -1824,9 +1840,9 @@ this.accountCache = new Map();
 }
 
 function multiplyAndCeil(value: number | bigint | string, multiplier: number): bigint {
-  const scaledValue = typeof value === "bigint" ? value : BigInt(String(value));
+  const scaledValue = typeof value === 'bigint' ? value : BigInt(String(value));
   if (scaledValue < BigInt(0)) {
-    throw new ValidationError("Cannot buffer a non-finite or negative resource value");
+    throw new ValidationError('Cannot buffer a non-finite or negative resource value');
   }
 
   const { numerator, denominator } = toFraction(multiplier);
@@ -1835,16 +1851,18 @@ function multiplyAndCeil(value: number | bigint | string, multiplier: number): b
 
 function toFraction(multiplier: number): { numerator: bigint; denominator: bigint } {
   if (!Number.isFinite(multiplier) || multiplier < 0) {
-    throw new ValidationError("feeBufferMultiplier must be a finite number greater than or equal to 0");
+    throw new ValidationError(
+      'feeBufferMultiplier must be a finite number greater than or equal to 0'
+    );
   }
 
-  const decimalString = multiplier.toString().includes("e")
-    ? multiplier.toFixed(12).replace(/0+$/, "").replace(/\.$/, "")
+  const decimalString = multiplier.toString().includes('e')
+    ? multiplier.toFixed(12).replace(/0+$/, '').replace(/\.$/, '')
     : multiplier.toString();
-  const [wholePart, fractionalPart = ""] = decimalString.split(".");
+  const [wholePart, fractionalPart = ''] = decimalString.split('.');
 
   if (!/^\d+$/.test(wholePart) || !/^\d*$/.test(fractionalPart)) {
-    throw new ValidationError("feeBufferMultiplier must be a valid decimal number");
+    throw new ValidationError('feeBufferMultiplier must be a valid decimal number');
   }
 
   const denominator = BigInt(10) ** BigInt(fractionalPart.length);
@@ -1852,34 +1870,36 @@ function toFraction(multiplier: number): { numerator: bigint; denominator: bigin
 
   return {
     numerator,
-    denominator: denominator === BigInt(0) ? BigInt(1) : denominator
+    denominator: denominator === BigInt(0) ? BigInt(1) : denominator,
   };
 }
 
 function validatePollingInterval(value: number, fieldName: string, allowZero: boolean): void {
   const valid = Number.isFinite(value) && (allowZero ? value >= 0 : value > 0);
   if (!valid) {
-    throw new ValidationError(`${fieldName} must be a finite ${allowZero ? "non-negative" : "positive"} number`);
+    throw new ValidationError(
+      `${fieldName} must be a finite ${allowZero ? 'non-negative' : 'positive'} number`
+    );
   }
 }
 
 function parseTransactionPollResult(response: unknown): TransactionPollResult {
   const record = isRecord(response) ? response : {};
-  const status = typeof record.status === "string" ? record.status : "UNKNOWN";
+  const status = typeof record.status === 'string' ? record.status : 'UNKNOWN';
 
   return {
     ...record,
     status,
-    ledger: normalizeLedger(record.ledger)
+    ledger: normalizeLedger(record.ledger),
   };
 }
 
 function normalizeLedger(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
   }
 
-  if (typeof value === "string" && value.trim() !== "") {
+  if (typeof value === 'string' && value.trim() !== '') {
     const parsed = Number(value);
     if (Number.isFinite(parsed)) {
       return parsed;
@@ -1890,5 +1910,5 @@ function normalizeLedger(value: unknown): number | null {
 }
 
 function isRecord(value: unknown): value is TransactionResponseRecord {
-  return typeof value === "object" && value !== null;
+  return typeof value === 'object' && value !== null;
 }
