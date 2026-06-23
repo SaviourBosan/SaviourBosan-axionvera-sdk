@@ -1,4 +1,4 @@
-﻿import { Tracer } from '../../src/observability/tracer';
+import { Tracer } from '../../src/observability/tracer';
 
 describe('Tracer', () => {
   let tracer: Tracer;
@@ -51,7 +51,7 @@ describe('Tracer', () => {
     const smallTracer = new Tracer('debug', 3);
     const ids: string[] = [];
     for (let i = 0; i < 5; i++) {
-      const id = smallTracer.startSpan(op_);
+      const id = smallTracer.startSpan(`op_${i}`);
       smallTracer.endSpan(id);
       ids.push(id);
     }

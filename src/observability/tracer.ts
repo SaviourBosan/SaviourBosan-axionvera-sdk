@@ -1,7 +1,5 @@
 import { TraceSpan, TraceLevel } from './types';
 
-
-
 export class Tracer {
   private spans: Map<string, TraceSpan> = new Map();
   private activeSpans: Map<string, TraceSpan> = new Map();
@@ -22,7 +20,7 @@ export class Tracer {
     if (this.level === 'off') return '';
 
     this.spanCounter++;
-    const id = span__;
+    const id = `span_${String(this.spanCounter)}`;
 
     const span: TraceSpan = {
       id,
