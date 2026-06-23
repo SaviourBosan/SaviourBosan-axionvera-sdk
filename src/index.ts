@@ -180,3 +180,38 @@ export {
   VaultInfoResultSchema,
   VaultBalanceResultSchema,
 } from './contracts/contractSchemas';
+
+// Contract Migration Support Toolkit
+export { MigrationStateValidationError, MigrationPathNotFoundError } from './errors/axionveraError';
+export type { MigrationStateValidationErrorOptions } from './errors/axionveraError';
+export {
+  MigrationRegistry,
+  defaultMigrationRegistry,
+  MigrationStateValidator,
+  defaultMigrationStateValidator,
+  MigrationRunner,
+  defaultMigrationRunner,
+  summarizeMigrationReport,
+  serializeMigrationReport,
+  MigrationStatus,
+  MigrationStepStatus,
+} from './migrations';
+export type {
+  AnyMigrationStep,
+  MigrationContext,
+  MigrationPlan,
+  MigrationReport,
+  MigrationStepDefinition,
+  MigrationStepResult,
+  RunMigrationOptions,
+  RunMigrationResult,
+} from './migrations';
+export {
+  VAULT_MIGRATION_CONTRACT_ID,
+  VaultStateV1Schema,
+  VaultStateV2Schema,
+  VaultStateV3Schema,
+  vaultV1ToV2Migration,
+  vaultV2ToV3Migration,
+} from './contracts/contractMigrations';
+export type { VaultStateV1, VaultStateV2, VaultStateV3 } from './contracts/contractMigrations';

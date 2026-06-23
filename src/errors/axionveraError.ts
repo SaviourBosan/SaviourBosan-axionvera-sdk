@@ -186,6 +186,57 @@ export class SchemaValidationError extends AxionveraError {
   }
 }
 
+export type MigrationStateValidationErrorOptions = AxionveraErrorOptions & {
+  /** Logical contract id whose state failed validation. */
+  contractId: string;
+  /** The migration version the state was expected to match. */
+  version: string;
+  /** Every individual field-level issue that caused the failure. */
+  issues: ValidationIssue[];
+};
+
+/**
+ * Thrown by {@link MigrationStateValidator} when a contract's state does not
+ * match the schema registered for a given migration version.
+ *
+ * Carries structured {@link ValidationIssue} entries, consistent with
+ * {@link SchemaValidationError}, so callers can render field-level error
+ * messages instead of parsing a single string.
+ */
+export class MigrationStateValidationError extends AxionveraError {
+  readonly contractId: string;
+  readonly version: string;
+  readonly issues: ValidationIssue[];
+
+  constructor(message: string, options: MigrationStateValidationErrorOptions) {
+    super(message, options);
+    this.name = 'MigrationStateValidationError';
+    this.contractId = options.contractId;
+    this.version = options.version;
+    this.issues = options.issues;
+  }
+}
+
+/**
+ * Thrown by {@link MigrationRegistry.resolvePath} when no chain of registered
+ * migration steps connects `fromVersion` to `toVersion` for a contract.
+ */
+export class MigrationPathNotFoundError extends AxionveraError {
+  readonly contractId: string;
+  readonly fromVersion: string;
+  readonly toVersion: string;
+
+  constructor(contractId: string, fromVersion: string, toVersion: string) {
+    super(
+      `No migration path found for contract "${contractId}" from version "${fromVersion}" to "${toVersion}"`
+    );
+    this.name = 'MigrationPathNotFoundError';
+    this.contractId = contractId;
+    this.fromVersion = fromVersion;
+    this.toVersion = toVersion;
+  }
+}
+
 export type RPCValidationMismatchErrorOptions = AxionveraErrorOptions & {
   rpcMethod: string;
   receivedShape: unknown;
