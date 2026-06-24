@@ -1,27 +1,29 @@
-type ErrorHeaderContainer = {
+import type { ValidationIssue, ValidationKind } from '../types/validation';
+
+interface ErrorHeaderContainer {
   get?: (name: string) => string | undefined;
   [key: string]: unknown;
-};
+}
 
-type ErrorResponseLike = {
+interface ErrorResponseLike {
   status?: unknown;
   headers?: ErrorHeaderContainer;
   data?: unknown;
-};
+}
 
-type ErrorLike = {
+interface ErrorLike {
   message?: unknown;
   code?: unknown;
   status?: unknown;
   requestId?: unknown;
   response?: ErrorResponseLike;
-};
+}
 
-export type AxionveraErrorOptions = {
+export interface AxionveraErrorOptions {
   statusCode?: number;
   requestId?: string;
   originalError?: unknown;
-};
+}
 
 export class AxionveraError extends Error {
   readonly statusCode?: number;
@@ -37,27 +39,27 @@ export class AxionveraError extends Error {
   }
 }
 
-export class NetworkError extends AxionveraError { }
+export class NetworkError extends AxionveraError {}
 
-export class AuthenticationError extends AxionveraError { }
+export class AuthenticationError extends AxionveraError {}
 
-export class RateLimitError extends AxionveraError { }
+export class RateLimitError extends AxionveraError {}
 
-export class ValidationError extends AxionveraError { }
+export class ValidationError extends AxionveraError {}
 
-export class TransactionError extends AxionveraError { }
+export class TransactionError extends AxionveraError {}
 
-export class RpcError extends AxionveraError { }
+export class RpcError extends AxionveraError {}
 
-export class ContractError extends AxionveraError { }
+export class ContractError extends AxionveraError {}
 
-export class TimeoutError extends AxionveraError { }
+export class TimeoutError extends AxionveraError {}
 
-export class TransactionTimeoutError extends TimeoutError { }
+export class TransactionTimeoutError extends TimeoutError {}
 
-export class InsufficientFundsError extends AxionveraError { }
+export class InsufficientFundsError extends AxionveraError {}
 
-export class InvalidSignatureError extends AxionveraError { }
+export class InvalidSignatureError extends AxionveraError {}
 
 /**
  * Thrown when a consumer-provided XDR string fails sanitization.
@@ -84,15 +86,15 @@ export class InvalidXDRError extends AxionveraError {
   }
 }
 
-export class SimulationError extends AxionveraError { }
+export class SimulationError extends AxionveraError {}
 
-export class WalletNotInstalledError extends AxionveraError { }
+export class WalletNotInstalledError extends AxionveraError {}
 
-export class FaucetRateLimitError extends AxionveraError { }
+export class FaucetRateLimitError extends AxionveraError {}
 
-export class NetworkMismatchError extends AxionveraError { }
+export class NetworkMismatchError extends AxionveraError {}
 
-export class InsecureNetworkError extends AxionveraError { }
+export class InsecureNetworkError extends AxionveraError {}
 
 export class AxionveraRPCError extends AxionveraError {
   readonly rpcMethod: string;
@@ -107,7 +109,10 @@ export class AxionveraRPCError extends AxionveraError {
 export class SimulationFailedError extends AxionveraError {
   readonly simulationResult?: unknown;
 
-  constructor(message: string, options: AxionveraErrorOptions & { simulationResult?: unknown } = {}) {
+  constructor(
+    message: string,
+    options: AxionveraErrorOptions & { simulationResult?: unknown } = {}
+  ) {
     super(message, options);
     this.name = 'SimulationFailedError';
     this.simulationResult = options.simulationResult;
@@ -126,8 +131,8 @@ export class SlippageToleranceExceededError extends AxionveraError {
     options: AxionveraErrorOptions = {}
   ) {
     super(
-      `Slippage tolerance exceeded: expected at least ${expected} shares, ` +
-      `but simulation returned ${actual}. Tolerance was ${tolerance}.`,
+      `Slippage tolerance exceeded: expected at least ${expected.toString()} shares, ` +
+        `but simulation returned ${actual.toString()}. Tolerance was ${tolerance.toString()}.`,
       options
     );
     this.name = 'SlippageToleranceExceededError';
@@ -144,6 +149,91 @@ export class WalletConnectionError extends AxionveraError {
     super(message, options);
     this.name = 'WalletConnectionError';
     this.walletType = options.walletType;
+  }
+}
+
+export type SchemaValidationErrorOptions = AxionveraErrorOptions & {
+  /** Logical contract/method-group identifier the schema was registered under. */
+  contractId: string;
+  /** The contract method whose params or result failed validation. */
+  method: string;
+  /** Whether the failure was on the input params or the returned result. */
+  kind: ValidationKind;
+  /** Every individual field-level issue that caused the failure. */
+  issues: ValidationIssue[];
+};
+
+/**
+ * Thrown by the contract schema validation engine when a method's params or
+ * result do not match its registered schema.
+ *
+ * Carries structured {@link ValidationIssue} entries so callers can render
+ * field-level error messages instead of parsing a single string.
+ */
+export class SchemaValidationError extends AxionveraError {
+  readonly contractId: string;
+  readonly method: string;
+  readonly kind: ValidationKind;
+  readonly issues: ValidationIssue[];
+
+  constructor(message: string, options: SchemaValidationErrorOptions) {
+    super(message, options);
+    this.name = 'SchemaValidationError';
+    this.contractId = options.contractId;
+    this.method = options.method;
+    this.kind = options.kind;
+    this.issues = options.issues;
+  }
+}
+
+export type MigrationStateValidationErrorOptions = AxionveraErrorOptions & {
+  /** Logical contract id whose state failed validation. */
+  contractId: string;
+  /** The migration version the state was expected to match. */
+  version: string;
+  /** Every individual field-level issue that caused the failure. */
+  issues: ValidationIssue[];
+};
+
+/**
+ * Thrown by {@link MigrationStateValidator} when a contract's state does not
+ * match the schema registered for a given migration version.
+ *
+ * Carries structured {@link ValidationIssue} entries, consistent with
+ * {@link SchemaValidationError}, so callers can render field-level error
+ * messages instead of parsing a single string.
+ */
+export class MigrationStateValidationError extends AxionveraError {
+  readonly contractId: string;
+  readonly version: string;
+  readonly issues: ValidationIssue[];
+
+  constructor(message: string, options: MigrationStateValidationErrorOptions) {
+    super(message, options);
+    this.name = 'MigrationStateValidationError';
+    this.contractId = options.contractId;
+    this.version = options.version;
+    this.issues = options.issues;
+  }
+}
+
+/**
+ * Thrown by {@link MigrationRegistry.resolvePath} when no chain of registered
+ * migration steps connects `fromVersion` to `toVersion` for a contract.
+ */
+export class MigrationPathNotFoundError extends AxionveraError {
+  readonly contractId: string;
+  readonly fromVersion: string;
+  readonly toVersion: string;
+
+  constructor(contractId: string, fromVersion: string, toVersion: string) {
+    super(
+      `No migration path found for contract "${contractId}" from version "${fromVersion}" to "${toVersion}"`
+    );
+    this.name = 'MigrationPathNotFoundError';
+    this.contractId = contractId;
+    this.fromVersion = fromVersion;
+    this.toVersion = toVersion;
   }
 }
 
@@ -181,18 +271,18 @@ export function normalizeRpcError(error: unknown, operation: string): AxionveraE
   if (typeof errorLike.code === 'string') {
     if (errorLike.code.includes('TIMEOUT') || message.toLowerCase().includes('timeout')) {
       return new TimeoutError(message, {
-        originalError: error
+        originalError: error,
       });
     }
     if (errorLike.code.includes('NETWORK') || message.toLowerCase().includes('network')) {
       return new NetworkError(message, {
-        originalError: error
+        originalError: error,
       });
     }
   }
 
   return new RpcError(message, {
-    originalError: error
+    originalError: error,
   });
 }
 
@@ -207,29 +297,34 @@ export function normalizeTransactionError(error: unknown, txHash?: string): Axio
     return error;
   }
 
-  const errorLike = asErrorLike(error);
   const message = getErrorMessage(error, 'Transaction failed');
 
   // Check for specific transaction error patterns
   const lowerMessage = message.toLowerCase();
   if (lowerMessage.includes('insufficient') && lowerMessage.includes('fund')) {
-    return new InsufficientFundsError(`Insufficient funds for transaction${txHash ? ` (${txHash})` : ''}`, {
-      originalError: error
-    });
+    return new InsufficientFundsError(
+      `Insufficient funds for transaction${txHash ? ` (${txHash})` : ''}`,
+      {
+        originalError: error,
+      }
+    );
   }
   if (lowerMessage.includes('invalid') && lowerMessage.includes('signature')) {
-    return new InvalidSignatureError(`Invalid signature for transaction${txHash ? ` (${txHash})` : ''}`, {
-      originalError: error
-    });
+    return new InvalidSignatureError(
+      `Invalid signature for transaction${txHash ? ` (${txHash})` : ''}`,
+      {
+        originalError: error,
+      }
+    );
   }
   if (lowerMessage.includes('timeout') || lowerMessage.includes('timed out')) {
     return new TimeoutError(`Transaction timeout${txHash ? ` (${txHash})` : ''}`, {
-      originalError: error
+      originalError: error,
     });
   }
 
   return new TransactionError(message, {
-    originalError: error
+    originalError: error,
   });
 }
 
@@ -240,13 +335,17 @@ export function normalizeTransactionError(error: unknown, txHash?: string): Axio
  * @param method - The method that was called
  * @returns Normalized AxionveraError
  */
-export function normalizeContractError(error: unknown, contractId: string, method: string): AxionveraError {
+export function normalizeContractError(
+  error: unknown,
+  contractId: string,
+  method: string
+): AxionveraError {
   if (error instanceof AxionveraError) {
     return error;
   }
 
   return new ContractError(`Contract call failed: ${method} on ${contractId}`, {
-    originalError: error
+    originalError: error,
   });
 }
 
@@ -263,36 +362,39 @@ export function normalizeSimulationError(error: unknown): AxionveraError {
   const message = getErrorMessage(error, 'Transaction simulation failed');
 
   return new SimulationError(message, {
-    originalError: error
+    originalError: error,
   });
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === 'object' && value !== null;
 }
 
 function asErrorLike(error: unknown): ErrorLike {
-  return isObject(error) ? (error as ErrorLike) : {};
+  return isObject(error) ? error : {};
 }
 
-function getHeaderValue(headers: ErrorHeaderContainer | undefined, key: string): string | undefined {
+function getHeaderValue(
+  headers: ErrorHeaderContainer | undefined,
+  key: string
+): string | undefined {
   if (!headers) {
     return undefined;
   }
 
-  if (typeof headers.get === "function") {
+  if (typeof headers.get === 'function') {
     const headerValue = headers.get(key) ?? headers.get(key.toLowerCase());
-    if (typeof headerValue === "string") {
+    if (typeof headerValue === 'string') {
       return headerValue;
     }
   }
 
   const direct = headers[key] ?? headers[key.toLowerCase()] ?? headers[key.toUpperCase()];
-  return typeof direct === "string" ? direct : undefined;
+  return typeof direct === 'string' ? direct : undefined;
 }
 
 function getMessageFromResponseData(data: unknown): string | undefined {
-  if (typeof data === "string") {
+  if (typeof data === 'string') {
     return data;
   }
 
@@ -301,12 +403,12 @@ function getMessageFromResponseData(data: unknown): string | undefined {
   }
 
   const message = data.message;
-  if (typeof message === "string" && message.trim().length > 0) {
+  if (typeof message === 'string' && message.trim().length > 0) {
     return message;
   }
 
   const error = data.error;
-  if (typeof error === "string" && error.trim().length > 0) {
+  if (typeof error === 'string' && error.trim().length > 0) {
     return error;
   }
 
@@ -320,11 +422,11 @@ export function getErrorStatusCode(error: unknown): number | undefined {
 
   const errorLike = asErrorLike(error);
   const responseStatus = errorLike.response?.status;
-  if (typeof responseStatus === "number") {
+  if (typeof responseStatus === 'number') {
     return responseStatus;
   }
 
-  if (typeof errorLike.status === "number") {
+  if (typeof errorLike.status === 'number') {
     return errorLike.status;
   }
 
@@ -340,11 +442,11 @@ export function getErrorRequestId(error: unknown): string | undefined {
   const headers = errorLike.response?.headers;
 
   return (
-    getHeaderValue(headers, "x-request-id") ??
-    getHeaderValue(headers, "x-requestid") ??
-    getHeaderValue(headers, "request-id") ??
-    getHeaderValue(headers, "x-correlation-id") ??
-    (typeof errorLike.requestId === "string" ? errorLike.requestId : undefined)
+    getHeaderValue(headers, 'x-request-id') ??
+    getHeaderValue(headers, 'x-requestid') ??
+    getHeaderValue(headers, 'request-id') ??
+    getHeaderValue(headers, 'x-correlation-id') ??
+    (typeof errorLike.requestId === 'string' ? errorLike.requestId : undefined)
   );
 }
 
@@ -354,7 +456,7 @@ function getErrorMessage(error: unknown, fallbackMessage: string): string {
   }
 
   const errorLike = asErrorLike(error);
-  if (typeof errorLike.message === "string" && errorLike.message.trim().length > 0) {
+  if (typeof errorLike.message === 'string' && errorLike.message.trim().length > 0) {
     return errorLike.message;
   }
 
@@ -367,20 +469,19 @@ function getErrorMessage(error: unknown, fallbackMessage: string): string {
 }
 
 function isNetworkCode(errorCode: unknown): boolean {
-  if (typeof errorCode !== "string") {
+  if (typeof errorCode !== 'string') {
     return false;
   }
 
-  return [
-    "ECONNABORTED",
-    "ECONNRESET",
-    "ENOTFOUND",
-    "ETIMEDOUT",
-    "ERR_NETWORK"
-  ].includes(errorCode);
+  return ['ECONNABORTED', 'ECONNRESET', 'ENOTFOUND', 'ETIMEDOUT', 'ERR_NETWORK'].includes(
+    errorCode
+  );
 }
 
-export function toAxionveraError(error: unknown, fallbackMessage = "API request failed"): AxionveraError {
+export function toAxionveraError(
+  error: unknown,
+  fallbackMessage = 'API request failed'
+): AxionveraError {
   if (error instanceof AxionveraError) {
     return error;
   }
@@ -393,7 +494,7 @@ export function toAxionveraError(error: unknown, fallbackMessage = "API request 
   const options: AxionveraErrorOptions = {
     statusCode,
     requestId,
-    originalError: error
+    originalError: error,
   };
 
   if (statusCode === 401 || statusCode === 403) {

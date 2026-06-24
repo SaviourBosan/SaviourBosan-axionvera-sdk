@@ -2,7 +2,12 @@
 export { StellarClient, HYDRATION_STATE_VERSION } from './client/stellarClient';
 export { AxionveraClient } from './client/axionveraClient';
 export { FaucetClient } from './client/faucetClient';
-export type { StellarClientOptions, GetContractEventsOptions, GetContractEventsResult, ContractEventResult } from './client/stellarClient';
+export type {
+  StellarClientOptions,
+  GetContractEventsOptions,
+  GetContractEventsResult,
+  ContractEventResult,
+} from './client/stellarClient';
 export type {
   StellarClientOptions,
   PendingTransaction,
@@ -15,6 +20,18 @@ export type {
 } from './client/stellarClient';
 export type { AxionveraClientConfig } from './client/axionveraClient';
 export type { LogLevel, CustomLogger } from './utils/logger';
+
+// Registry
+export { ContractMetadataRegistry, contractMetadataRegistry } from './registry';
+export type {
+  ContractCapability,
+  ContractDeploymentMetadata,
+  ContractEnvironment,
+  ContractFeature,
+  ContractLookupOptions,
+  ContractMetadata,
+  ContractValidationResult,
+} from './registry';
 
 // Contracts
 export { BaseContract } from './contracts/BaseContract';
@@ -53,9 +70,19 @@ export type { WalletConnector } from './wallet/walletConnector';
 // Utils
 export { ConcurrencyQueue, createConcurrencyControlledClient } from './utils/concurrencyQueue';
 export { retry, createHttpClientWithRetry } from './utils/httpInterceptor';
-export { buildContractCallOperation, buildContractCallTransaction, buildContractAuthPayload, bumpTransactionFee, toScVal } from './utils/transactionBuilder';
+export {
+  buildContractCallOperation,
+  buildContractCallTransaction,
+  buildContractAuthPayload,
+  bumpTransactionFee,
+  toScVal,
+} from './utils/transactionBuilder';
 export type { BumpTransactionFeeOptions } from './utils/transactionBuilder';
-export { getDefaultRpcUrl, getNetworkPassphrase, resolveNetworkConfig } from './utils/networkConfig';
+export {
+  getDefaultRpcUrl,
+  getNetworkPassphrase,
+  resolveNetworkConfig,
+} from './utils/networkConfig';
 export { generateTransactionURI, generatePayURI } from './utils/sep7';
 export { decodeXdrBase64, clearXdrCache, getXdrCacheSize } from './utils/xdrCache';
 export { getRequiredSigners } from './utils/getRequiredSigners';
@@ -66,7 +93,11 @@ export {
   buildSorobanAddressAuthEntry,
   buildSorobanSourceAccountAuthEntry,
 } from './utils/sorobanAuth';
-export type { SorobanAuthEntry, BuildAddressAuthEntryParams, BuildSourceAuthEntryParams } from './utils/sorobanAuth';
+export type {
+  SorobanAuthEntry,
+  BuildAddressAuthEntryParams,
+  BuildSourceAuthEntryParams,
+} from './utils/sorobanAuth';
 
 // Errors
 export {
@@ -88,12 +119,15 @@ export {
   UserRejectedError,
   ContractRevertError,
   TransactionTimeoutError,
-  toAxionveraError
+  toAxionveraError,
 } from './errors/axionveraError';
 export type { RPCValidationMismatchErrorOptions } from './errors/axionveraError';
 
 // RPC schema types
-export type { ValidatedGetHealthResponse, ValidatedGetTransactionResponse } from './utils/rpcSchemas';
+export type {
+  ValidatedGetHealthResponse,
+  ValidatedGetTransactionResponse,
+} from './utils/rpcSchemas';
 
 // Transaction Signing
 export { TransactionSigner, EnhancedTransactionBuilder, TransactionSimulator } from './transaction';
@@ -108,7 +142,7 @@ export type {
   BatchTransactionParams,
   BatchTransactionResult,
   DetailedSimulationResult,
-  ResourceOptimizationOptions
+  ResourceOptimizationOptions,
 } from './transaction';
 
 // Testing & MSW
@@ -119,4 +153,10 @@ export { server } from './test/msw/server';
 // Codegen utilities (for programmatic use)
 export { parseWasm } from './codegen/wasmParser';
 export { generateContractClass } from './codegen/generator';
-export type { ContractSpec, SpecFunction, SpecParam, SpecStruct, SpecEnum } from './codegen/wasmParser';
+export type {
+  ContractSpec,
+  SpecFunction,
+  SpecParam,
+  SpecStruct,
+  SpecEnum,
+} from './codegen/wasmParser';

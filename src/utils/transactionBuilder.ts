@@ -6,8 +6,8 @@ import {
   Transaction,
   TransactionBuilder,
   nativeToScVal,
-  xdr
-} from "@stellar/stellar-sdk";
+  xdr,
+} from '@stellar/stellar-sdk';
 
 /**
  * Supported argument types for contract calls.
@@ -17,7 +17,7 @@ export type ContractCallArg = xdr.ScVal | Address | string | number | bigint | b
 /**
  * Parameters for building a contract call transaction.
  */
-export type BuildContractCallParams = {
+export interface BuildContractCallParams {
   /** The source account for the transaction */
   sourceAccount: Account;
   /** The network passphrase */
@@ -32,7 +32,7 @@ export type BuildContractCallParams = {
   fee?: number;
   /** Transaction timeout in seconds (default: 60) */
   timeoutInSeconds?: number;
-};
+}
 
 /**
  * Converts a value to an ScVal for contract interactions.
@@ -48,7 +48,7 @@ export function toScVal(arg: ContractCallArg): xdr.ScVal {
     return arg.toScVal();
   }
 
-  if (typeof arg === "string") {
+  if (typeof arg === 'string') {
     try {
       return Address.fromString(arg).toScVal();
     } catch {
@@ -56,15 +56,15 @@ export function toScVal(arg: ContractCallArg): xdr.ScVal {
     }
   }
 
-  if (typeof arg === "number") {
+  if (typeof arg === 'number') {
     return nativeToScVal(arg);
   }
 
-  if (typeof arg === "bigint") {
-    return nativeToScVal(arg, { type: "i128" });
+  if (typeof arg === 'bigint') {
+    return nativeToScVal(arg, { type: 'i128' });
   }
 
-  if (typeof arg === "boolean") {
+  if (typeof arg === 'boolean') {
     return nativeToScVal(arg);
   }
 
@@ -94,13 +94,11 @@ export function buildContractCallOperation(params: {
  * @param params - The transaction parameters
  * @returns The constructed transaction
  */
-export function buildContractCallTransaction(
-  params: BuildContractCallParams
-): Transaction {
+export function buildContractCallTransaction(params: BuildContractCallParams): Transaction {
   const operation = buildContractCallOperation({
     contractId: params.contractId,
     method: params.method,
-    args: params.args
+    args: params.args,
   });
 
   const fee = (params.fee ?? 100_000).toString();
@@ -108,7 +106,7 @@ export function buildContractCallTransaction(
 
   return new TransactionBuilder(params.sourceAccount, {
     fee,
-    networkPassphrase: params.networkPassphrase
+    networkPassphrase: params.networkPassphrase,
   })
     .addOperation(operation)
     .setTimeout(timeoutInSeconds)
@@ -118,7 +116,7 @@ export function buildContractCallTransaction(
 /**
  * Parameters for building a base transaction.
  */
-export type BuildBaseTransactionParams = {
+export interface BuildBaseTransactionParams {
   /** The source account for the transaction */
   sourceAccount: Account;
   /** The network passphrase */
@@ -127,48 +125,46 @@ export type BuildBaseTransactionParams = {
   fee?: number;
   /** Transaction timeout in seconds (default: 60) */
   timeoutInSeconds?: number;
-};
+}
 
 /**
  * Options for wrapping a signed transaction in a fee bump envelope.
  */
-export type BumpTransactionFeeOptions = {
+export interface BumpTransactionFeeOptions {
   /** The public key of the account sponsoring the higher fee */
   feeSource: string;
   /** The network passphrase used to parse and rebuild the transaction */
   networkPassphrase: string;
-};
+}
 
 /**
  * Builds a base transaction that can be extended with additional operations.
  * This is useful for composing multiple contract calls into a single transaction.
- * 
+ *
  * @param params - The transaction parameters
  * @returns A TransactionBuilder instance ready for adding operations
- * 
+ *
  * @example
  * ```typescript
  * const builder = buildBaseTransaction({
  *   sourceAccount,
  *   networkPassphrase: "Test SDF Network ; September 2015"
  * });
- * 
+ *
  * // Add multiple operations
  * builder.addOperation(depositOperation);
  * builder.addOperation(stakingOperation);
- * 
+ *
  * const transaction = builder.setTimeout(60).build();
  * ```
  */
-export function buildBaseTransaction(
-  params: BuildBaseTransactionParams
-): TransactionBuilder {
+export function buildBaseTransaction(params: BuildBaseTransactionParams): TransactionBuilder {
   const fee = (params.fee ?? 100_000).toString();
   const timeoutInSeconds = params.timeoutInSeconds ?? 60;
 
   const builder = new TransactionBuilder(params.sourceAccount, {
     fee,
-    networkPassphrase: params.networkPassphrase
+    networkPassphrase: params.networkPassphrase,
   });
 
   // Set timeout immediately so it's available for the builder
@@ -236,8 +232,8 @@ export class ContractCallBuilder {
    * @throws {Error} If contractId or method have not been set
    */
   build(sourceAccount: Account, networkPassphrase: string): Transaction {
-    if (!this._contractId) throw new Error("ContractCallBuilder: contractId is required");
-    if (!this._method) throw new Error("ContractCallBuilder: method is required");
+    if (!this._contractId) throw new Error('ContractCallBuilder: contractId is required');
+    if (!this._method) throw new Error('ContractCallBuilder: method is required');
 
     return buildContractCallTransaction({
       sourceAccount,
@@ -246,7 +242,7 @@ export class ContractCallBuilder {
       method: this._method,
       args: this._args,
       fee: this._fee,
-      timeoutInSeconds: this._timeoutInSeconds
+      timeoutInSeconds: this._timeoutInSeconds,
     });
   }
 
@@ -256,15 +252,18 @@ export class ContractCallBuilder {
    * @throws {Error} If contractId or method have not been set
    */
   buildOperation(): xdr.Operation {
-    if (!this._contractId) throw new Error("ContractCallBuilder: contractId is required");
-    if (!this._method) throw new Error("ContractCallBuilder: method is required");
+    if (!this._contractId) throw new Error('ContractCallBuilder: contractId is required');
+    if (!this._method) throw new Error('ContractCallBuilder: method is required');
 
     return buildContractCallOperation({
       contractId: this._contractId,
       method: this._method,
-      args: this._args
+      args: this._args,
     });
   }
+}
+
+/**
  * Wraps a signed transaction in an unsigned fee bump envelope.
  *
  * The returned XDR preserves the original user signature on the inner
@@ -282,28 +281,27 @@ export function bumpTransactionFee(
   options: BumpTransactionFeeOptions
 ): string {
   if (!signedXdr) {
-    throw new Error("signedXdr is required");
+    throw new Error('signedXdr is required');
   }
 
   if (!Number.isInteger(newBaseFee) || newBaseFee <= 0) {
-    throw new Error("newBaseFee must be a positive integer");
+    throw new Error('newBaseFee must be a positive integer');
   }
 
   if (!options.feeSource) {
-    throw new Error("feeSource is required");
+    throw new Error('feeSource is required');
   }
 
-  const innerTransaction = TransactionBuilder.fromXDR(
-    signedXdr,
-    options.networkPassphrase
-  );
+  const innerTransaction = TransactionBuilder.fromXDR(signedXdr, options.networkPassphrase);
 
   if (innerTransaction instanceof FeeBumpTransaction) {
-    throw new Error("signedXdr must be a signed inner transaction, not an existing fee bump transaction");
+    throw new Error(
+      'signedXdr must be a signed inner transaction, not an existing fee bump transaction'
+    );
   }
 
   if (innerTransaction.signatures.length === 0) {
-    throw new Error("signedXdr must include at least one signature before applying a fee bump");
+    throw new Error('signedXdr must include at least one signature before applying a fee bump');
   }
 
   return TransactionBuilder.buildFeeBumpTransaction(

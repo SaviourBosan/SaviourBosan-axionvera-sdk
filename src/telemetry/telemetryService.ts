@@ -40,7 +40,7 @@ export class TelemetryService {
 
     this.eventCounter++;
     const event: TelemetryEvent = {
-      id: 	el__,
+      id: `${Date.now()}-${this.eventCounter}-${Math.random().toString(36).substring(2, 15)}`,
       type,
       timestamp: Date.now(),
       data: this.config.anonymize ? this.anonymize(data) : data,
@@ -123,3 +123,6 @@ export class TelemetryService {
     return result;
   }
 }
+
+export const telemetryService = new TelemetryService();
+

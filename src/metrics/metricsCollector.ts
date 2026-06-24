@@ -61,3 +61,6 @@ export class MetricsCollector {
     return tagStr ? name + '[' + tagStr + ']' : name;
   }
 }
+
+export const metricsCollector = new MetricsCollector();
+
