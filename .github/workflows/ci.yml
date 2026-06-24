@@ -1,0 +1,97 @@
+name: CI Validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Audit npm dependency graph
+        run: npm audit --workspaces --include-workspace-root --audit-level=high
+
+  test-and-coverage:
+    name: Test on Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - run: npm test
+      - name: Build SDK
+        run: npm run build
+      - name: CSP Compliance Audit
+        run: npm run csp-audit
+      - name: Check Bundle Size
+        run: npm run size
+
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'benchmarks/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd benchmarks && npm ci
+
+      - name: Run performance benchmarks
+        id: benchmark_run
+        run: |
+          cd benchmarks
+          npm run benchmark:ci > ../benchmark_output.txt 2>&1
+        continue-on-error: true
+
+      - name: Extract benchmark results
+        id: extract
+        if: always() && steps.benchmark_run.outcome != 'failure'
+        run: |
+          # Extract the main parsing benchmark result
+          PARSE_RESULT=$(grep "Transaction.fromXDR() - Complex Transactions" benchmark_output.txt | awk '{print $2}' || echo "0")
+          echo "parse_result=$PARSE_RESULT" >> $GITHUB_OUTPUT
+
+          # Extract total time
+          TOTAL_TIME=$(grep "Total benchmark time:" benchmark_output.txt | grep -o '[0-9.]*' || echo "0")
+          echo "total_time=$TOTAL_TIME" >> $GITHUB_OUTPUT
+
+          # Check for performance warning
+          if grep -q "WARNING: Transaction parsing below threshold" benchmark_output.txt; then
+            echo "performance_warning=true" >> $GITHUB_OUTPUT
+          else
+            echo "performance_warning=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: benchmark_output.txt

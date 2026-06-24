@@ -212,6 +212,12 @@ export class ContractCallBuilder {
     return this;
   }
 
+  /** Appends a single argument to the existing arguments list. */
+  addArg(arg: ContractCallArg): this {
+    this._args.push(arg);
+    return this;
+  }
+
   /** Sets the transaction fee in stroops (default: 100_000). */
   setFee(fee: number): this {
     this._fee = fee;
@@ -261,6 +267,56 @@ export class ContractCallBuilder {
       args: this._args,
     });
   }
+<<<<<<< HEAD
+  /**
+   * Wraps a signed transaction in an unsigned fee bump envelope.
+   *
+   * The returned XDR preserves the original user signature on the inner
+   * transaction. Only the outer fee bump envelope still needs to be signed
+   * by the sponsoring account before submission.
+   *
+   * @param signedXdr - The already-signed inner transaction XDR
+   * @param newBaseFee - The replacement base fee in stroops
+   * @param options - Fee bump configuration
+   * @returns The unsigned fee bump transaction XDR
+   */
+  bumpTransactionFee(
+    signedXdr: string,
+    newBaseFee: number,
+    options: BumpTransactionFeeOptions
+  ): string {
+    if (!signedXdr) {
+      throw new Error('signedXdr is required');
+    }
+
+    if (!Number.isInteger(newBaseFee) || newBaseFee <= 0) {
+      throw new Error('newBaseFee must be a positive integer');
+    }
+
+    if (!options.feeSource) {
+      throw new Error('feeSource is required');
+    }
+
+    const innerTransaction = TransactionBuilder.fromXDR(signedXdr, options.networkPassphrase);
+
+    if (innerTransaction instanceof FeeBumpTransaction) {
+      throw new Error(
+        'signedXdr must be a signed inner transaction, not an existing fee bump transaction'
+      );
+    }
+
+    if (innerTransaction.signatures.length === 0) {
+      throw new Error('signedXdr must include at least one signature before applying a fee bump');
+    }
+
+    return TransactionBuilder.buildFeeBumpTransaction(
+      options.feeSource,
+      newBaseFee.toString(),
+      innerTransaction,
+      options.networkPassphrase
+    ).toXDR();
+  }
+=======
 }
 
 /**
@@ -310,4 +366,5 @@ export function bumpTransactionFee(
     innerTransaction,
     options.networkPassphrase
   ).toXDR();
+>>>>>>> upstream/main
 }
