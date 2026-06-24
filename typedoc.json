@@ -1,11 +1,15 @@
 {
   "$schema": "https://typedoc.org/schema.json",
-  "entryPoints": ["src/index.ts"],
+  "entryPoints": [
+    "packages/core/src/index.ts"
+  ],
   "out": "docs/api",
   "plugin": ["typedoc-plugin-markdown"],
-  "excludePrivate": true,
-  "excludeProtected": true,
-  "hideGenerator": true,
+  "entryPointStrategy": "resolve",
+  "tsconfig": "packages/core/tsconfig.json",
   "name": "Axionvera SDK",
-  "includeVersion": true
+  "readme": "packages/core/README.md",
+  "excludeInternal": true,
+  "excludePrivate": true,
+  "hideGenerator": true
 }

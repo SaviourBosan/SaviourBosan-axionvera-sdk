@@ -1,0 +1,1 @@
+export { CapabilityRegistry } from './capabilityRegistry';

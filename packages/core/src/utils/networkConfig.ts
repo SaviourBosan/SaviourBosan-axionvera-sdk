@@ -11,16 +11,16 @@ export type AxionveraNetwork = "testnet" | "mainnet" | "futurenet";
 export type NetworkConfig = {
   /** The network identifier */
   network: AxionveraNetwork;
-  /** The RPC URL for the network */
-  rpcUrl: string;
+  /** The RPC URL(s) for the network (can be single or multiple for failover) */
+  rpcUrls: string[];
   /** The network passphrase for transaction signing */
   networkPassphrase: string;
 };
 
-const DEFAULT_RPC_URLS: Record<AxionveraNetwork, string> = {
-  testnet: "https://soroban-testnet.stellar.org",
-  mainnet: "https://soroban-mainnet.stellar.org",
-  futurenet: "https://rpc-futurenet.stellar.org"
+const DEFAULT_RPC_URLS: Record<AxionveraNetwork, string[]> = {
+  testnet: ["https://soroban-testnet.stellar.org"],
+  mainnet: ["https://soroban-mainnet.stellar.org"],
+  futurenet: ["https://rpc-futurenet.stellar.org"]
 };
 
 /**
@@ -40,12 +40,19 @@ export function getNetworkPassphrase(network: AxionveraNetwork): string {
 }
 
 /**
- * Gets the default RPC URL for a given network.
+ * Gets the default RPC URLs for a given network.
  * @param network - The network identifier
- * @returns The default RPC URL
+ * @returns The default RPC URLs array
+ */
+export function getDefaultRpcUrls(network: AxionveraNetwork): string[] {
+  return DEFAULT_RPC_URLS[network];
+}
+
+/**
+ * @deprecated Use getDefaultRpcUrls instead
  */
 export function getDefaultRpcUrl(network: AxionveraNetwork): string {
-  return DEFAULT_RPC_URLS[network];
+  return DEFAULT_RPC_URLS[network][0];
 }
 
 /**
@@ -57,12 +64,21 @@ export function getDefaultRpcUrl(network: AxionveraNetwork): string {
 export function resolveNetworkConfig(input?: {
   network?: AxionveraNetwork;
   rpcUrl?: string;
+  rpcUrls?: string[];
   networkPassphrase?: string;
 }): NetworkConfig {
   const network = input?.network ?? "testnet";
   const networkPassphrase =
     input?.networkPassphrase ?? getNetworkPassphrase(network);
-  const rpcUrl = input?.rpcUrl ?? getDefaultRpcUrl(network);
+  
+  let rpcUrls: string[];
+  if (input?.rpcUrls && input.rpcUrls.length > 0) {
+    rpcUrls = input.rpcUrls;
+  } else if (input?.rpcUrl) {
+    rpcUrls = [input.rpcUrl];
+  } else {
+    rpcUrls = getDefaultRpcUrls(network);
+  }
 
-  return { network, rpcUrl, networkPassphrase };
+  return { network, rpcUrls, networkPassphrase };
 }
