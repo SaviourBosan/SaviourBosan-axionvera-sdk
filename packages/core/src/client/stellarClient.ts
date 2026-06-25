@@ -284,21 +284,10 @@ export class StellarClient extends BaseStellarRpcClient {
         }
       }
 
-    if (isProduction && isHttp && !isLocalhost && !allowHttp) {
-      throw new InsecureNetworkError(
-        'Insecure RPC connection in production: HTTP endpoint detected. ' +
-        'Use HTTPS for production or set allowHttp: true to override.'
-      );
-    }
-
     super();
-      this.network = network;
-      this.rpcUrls = rpcUrls;
-      this.currentRpcIndex = 0;
-      this.networkPassphrase = networkPassphrase;
-
     this.network = network;
-    this.rpcUrl = rpcUrl;
+    this.rpcUrls = rpcUrls;
+    this.currentRpcIndex = 0;
     this.networkPassphrase = networkPassphrase;
     this.concurrencyConfig = { ...DEFAULT_CONCURRENCY_CONFIG, ...options?.concurrencyConfig };
     this.concurrencyEnabled = !!options?.concurrencyConfig;

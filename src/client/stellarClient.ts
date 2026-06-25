@@ -31,7 +31,10 @@ import { Logger } from "../utils/logger";
 import { WalletConnector } from "../wallet/walletConnector";
 import { ServiceContainer, createServiceContainer } from "../core/serviceContainer";
 import { ServiceOverrides } from "../core/serviceInterfaces";
-import { telemetryService, metricsCollector } from "../telemetry";
+import { telemetryService } from "../telemetry";
+import { metricsCollector } from "../metrics";
+import { MiddlewarePipeline, Middleware, MiddlewareRegistration } from "../middleware";
+import { ContractEventEmitter } from "../contracts/ContractEventEmitter";
 import { getPluginManager, PluginManager } from "../plugin";
 
 const DEFAULT_FEE_BUFFER_MULTIPLIER = 1.15;
@@ -274,6 +277,8 @@ export class StellarClient {
   private wallet?: WalletConnector;
   /** Middleware execution pipeline. */
   readonly middleware: MiddlewarePipeline;
+  /** Active contract event emitters created via this client. */
+  private readonly eventEmitters = new Set<ContractEventEmitter>();
   /** Multiplier applied to simulated Soroban resources and fees. */
   readonly feeBufferMultiplier: number;
   /** Optional hard ceiling for the total prepared fee. */
