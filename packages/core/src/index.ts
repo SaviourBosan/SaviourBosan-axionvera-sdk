@@ -111,6 +111,19 @@ export type {
   BuildSourceAuthEntryParams,
 } from './utils/sorobanAuth';
 
+// Monitoring
+export { RpcHealthMonitor } from './monitoring';
+export type {
+  EndpointHealthState,
+  RpcEndpointConfig,
+  RpcEndpointMetrics,
+  RpcEndpointStatus,
+  RpcHealthCheckClient,
+  RpcHealthMonitorConfig,
+  RpcHealthResponse,
+  RpcHealthStatusReport
+} from './monitoring';
+
 // Errors
 export {
   AxionveraError,

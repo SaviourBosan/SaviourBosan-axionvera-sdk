@@ -80,6 +80,9 @@ export class SlippageToleranceExceededError extends AxionveraError {
     this.expected = expected;
     this.actual = actual;
     this.tolerance = tolerance;
+  }
+}
+
 export type RPCValidationMismatchErrorOptions = AxionveraErrorOptions & {
   rpcMethod: string;
   receivedShape: unknown;
@@ -93,21 +96,15 @@ export class RPCValidationMismatchError extends AxionveraError {
     super(message, options);
     this.rpcMethod = options.rpcMethod;
     this.receivedShape = options.receivedShape;
+  }
+}
+
 export class ContractRevertError extends AxionveraError {
   readonly trapCode?: string;
 
   constructor(message: string, trapCode?: string, options: AxionveraErrorOptions = {}) {
     super(message, options);
     this.trapCode = trapCode;
-  }
-}
-
-export class TransactionTimeoutError extends AxionveraError {
-  readonly hash: string;
-
-  constructor(hash: string, options: AxionveraErrorOptions = {}) {
-    super(`Transaction ${hash} was not confirmed within the timeout period.`, options);
-    this.hash = hash;
   }
 }
 

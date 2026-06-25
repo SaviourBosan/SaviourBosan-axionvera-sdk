@@ -140,7 +140,7 @@ export class LocalKeypairWalletConnector implements WalletConnector {
    * ```
    */
   async signTransaction(
-    xdr: string,
+    transactionXdr: string,
     networkPassphrase: string
   ): Promise<string> {
     // Sanitize before any buffer allocation.
@@ -158,9 +158,6 @@ export class LocalKeypairWalletConnector implements WalletConnector {
         { originalError: err },
       );
     }
-    const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase);
-    tx.sign(this.keypair);
-    return tx.toXDR();
   }
 }
 

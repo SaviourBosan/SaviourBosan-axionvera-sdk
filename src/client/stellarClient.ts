@@ -15,7 +15,7 @@ import {
 import { AxionveraNetwork, resolveNetworkConfig } from "../utils/networkConfig";
 import { ConcurrencyConfig, DEFAULT_CONCURRENCY_CONFIG } from "../utils/concurrencyQueue";
 import { RetryConfig, retry } from "../utils/httpInterceptor";
-import { normalizeRpcError, normalizeTransactionError, TimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError } from "../errors/axionveraError";
+import { normalizeRpcError, normalizeTransactionError, TimeoutError, TransactionTimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError, InvalidXDRError, ValidationError, toAxionveraError } from "../errors/axionveraError";
 import {
   validateRpcResponse,
   GetHealthResponseSchema,
@@ -24,16 +24,17 @@ import {
   ValidatedGetHealthResponse,
   ValidatedGetTransactionResponse,
 } from "../utils/rpcSchemas";
-import { normalizeRpcError, normalizeTransactionError, TimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError, InvalidXDRError } from "../errors/axionveraError";
 import { assertValidXDR } from '../utils/xdrValidator';
-import { normalizeRpcError, normalizeTransactionError, TransactionTimeoutError, InsecureNetworkError, AxionveraError, AxionveraRPCError, SimulationFailedError, ValidationError, toAxionveraError } from "../errors/axionveraError";
 import { WebSocketManager } from "./websocket/websocketManager";
 import { WebSocketConfig } from "./websocket/types";
 import { Logger } from "../utils/logger";
 import { WalletConnector } from "../wallet/walletConnector";
 import { ServiceContainer, createServiceContainer } from "../core/serviceContainer";
 import { ServiceOverrides } from "../core/serviceInterfaces";
-import { telemetryService, metricsCollector } from "../telemetry";
+import { telemetryService } from "../telemetry";
+import { metricsCollector } from "../metrics";
+import { MiddlewarePipeline, Middleware, MiddlewareRegistration } from "../middleware";
+import { ContractEventEmitter } from "../contracts/ContractEventEmitter";
 import { getPluginManager, PluginManager } from "../plugin";
 
 const DEFAULT_FEE_BUFFER_MULTIPLIER = 1.15;
@@ -276,6 +277,8 @@ export class StellarClient {
   private wallet?: WalletConnector;
   /** Middleware execution pipeline. */
   readonly middleware: MiddlewarePipeline;
+  /** Active contract event emitters created via this client. */
+  private readonly eventEmitters = new Set<ContractEventEmitter>();
   /** Multiplier applied to simulated Soroban resources and fees. */
   readonly feeBufferMultiplier: number;
   /** Optional hard ceiling for the total prepared fee. */
@@ -1216,16 +1219,6 @@ export class StellarClient {
    * @param params - Optional polling parameters
    * @param params.timeoutMs - Maximum time to wait in milliseconds (default: 30000)
    * @param params.intervalMs - Time between polls in milliseconds (default: 1000)
-/** Cache time-to-live in milliseconds for account data. */
-  private readonly CACHE_TTL = 5000;
-  /** Account cache for offline support. */
-  private accountCache: Map<string, { account: Account; timestamp: number }>;
-  /** Optional wallet connector for transaction signing. */
-  private wallet?: WalletConnector;
-  /** Multiplier applied to simulated Soroban resources and fees. */
-  readonly feeBufferMultiplier: number;
-  /** Optional hard ceiling for the total prepared fee. */
-  readonly maxFeeLimit?: bigint;
    */
   async pollTransaction(
     hash: string,
@@ -1343,79 +1336,12 @@ export class StellarClient {
         deadline: tx.deadline.toISOString(),
         label: tx.label,
       });
-  ): Promise<TransactionPollResult> {
-    const timeoutMs = params?.timeoutMs ?? 30_000;
-    const intervalMs = params?.intervalMs ?? 1_000;
-
-    validatePollingInterval(timeoutMs, "timeoutMs", true);
-    validatePollingInterval(intervalMs, "intervalMs", false);
-
-    return new Promise<TransactionPollResult>((resolve, reject) => {
-      let settled = false;
-      let pollTimer: ReturnType<typeof setTimeout> | undefined;
-
-      const clearTimers = () => {
-        clearTimeout(timeoutTimer);
-        if (pollTimer) {
-          clearTimeout(pollTimer);
-        }
-      };
-
-      const settle = (callback: () => void) => {
-        if (settled) {
-          return;
-        }
-
-        settled = true;
-        clearTimers();
-        callback();
-      };
-
-      const scheduleNextPoll = () => {
-        if (settled) {
-          return;
-        }
-
-        pollTimer = setTimeout(() => {
-          void pollOnce();
-        }, intervalMs);
-      };
-
-      const timeoutTimer = setTimeout(() => {
-        settle(() => {
-          reject(
-            new TransactionTimeoutError(
-              `Timed out waiting for transaction ${hash} after ${timeoutMs}ms`
-            )
-          );
-        });
-      }, timeoutMs);
-
-      const pollOnce = async () => {
-        try {
-          const res = await this.getTransaction(hash);
-          if (settled) {
-            return;
-          }
-
-          const parsed = parseTransactionPollResult(res);
-          if (parsed.status === "SUCCESS" || parsed.status === "FAILED") {
-            settle(() => resolve(parsed));
-            return;
-          }
-
-          scheduleNextPoll();
-        } catch (error) {
-          if (settled) {
-            return;
-          }
-
-          settle(() => reject(error));
-        }
-      };
-
-      void pollOnce();
-    });
+    }
+    return {
+      version: HYDRATION_STATE_VERSION,
+      exportedAt: new Date().toISOString(),
+      pending,
+    };
   }
 
   private applyFeeBuffer(tx: Transaction): Transaction {
@@ -1448,11 +1374,20 @@ export class StellarClient {
         );
       }
     }
-    return {
-      version: HYDRATION_STATE_VERSION,
-      exportedAt: new Date().toISOString(),
-      pending,
-    };
+    const bufferedSorobanData = new SorobanDataBuilder(sorobanData)
+      .setResources(
+        multiplyAndCeil(resources.instructions(), this.feeBufferMultiplier),
+        multiplyAndCeil(resources.diskReadBytes(), this.feeBufferMultiplier),
+        multiplyAndCeil(resources.writeBytes(), this.feeBufferMultiplier)
+      )
+      .setResourceFee(bufferedResourceFee.toString())
+      .build();
+
+    return TransactionBuilder.cloneFrom(tx, {
+      fee: bufferedBaseFee.toString(),
+      networkPassphrase: tx.networkPassphrase,
+      sorobanData: bufferedSorobanData,
+    }).build();
   }
 
   /**
@@ -1511,20 +1446,6 @@ export class StellarClient {
       restored.push(tracked);
     }
     return restored;
-    const bufferedSorobanData = new SorobanDataBuilder(sorobanData)
-      .setResources(
-        multiplyAndCeil(resources.instructions(), this.feeBufferMultiplier),
-        multiplyAndCeil(resources.diskReadBytes(), this.feeBufferMultiplier),
-        multiplyAndCeil(resources.writeBytes(), this.feeBufferMultiplier)
-      )
-      .setResourceFee(bufferedResourceFee.toString())
-      .build();
-
-    return TransactionBuilder.cloneFrom(tx, {
-      fee: bufferedBaseFee.toString(),
-      networkPassphrase: tx.networkPassphrase,
-      sorobanData: bufferedSorobanData
-    }).build();
   }
 
   /**

@@ -1,5 +1,5 @@
 import { Transaction, rpc } from '@stellar/stellar-sdk';
-import { StellarClient } from '../client/StellarClient';
+import { StellarClient } from '../client/stellarClient';
 
 /**
  * Helper to simulate a transaction and extract the required Soroban resources.

@@ -28,6 +28,16 @@
       "require": "./dist/client.js",
       "types": "./dist/client.d.ts"
     },
+    "./monitoring": {
+      "import": {
+        "types": "./dist/monitoring.d.mts",
+        "default": "./dist/monitoring.mjs"
+      },
+      "require": {
+        "types": "./dist/monitoring.d.ts",
+        "default": "./dist/monitoring.js"
+      }
+    },
     "./utils": {
       "import": "./dist/utils.mjs",
       "require": "./dist/utils.js",

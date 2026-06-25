@@ -25,7 +25,7 @@ export class DiagnosticsManager {
 
     this.eventCounter++;
     const event: DiagnosticEvent = {
-      id: diag__,
+      id: `diag_${this.eventCounter}`,
       type,
       timestamp: Date.now(),
       data,

@@ -47,6 +47,12 @@ sortByTimestamp,
 filterByActionType
 } from "../utils/transactionHistory";
 import { parseSorobanEvent, ParsedSorobanEvent } from "../utils/sorobanEventParser";
+import {
+  RpcEndpointStatus,
+  RpcHealthMonitor,
+  RpcHealthMonitorConfig,
+  RpcHealthStatusReport
+} from "../monitoring";
 
 const DEFAULT_FEE_BUFFER_MULTIPLIER = 1.15;
 
@@ -74,6 +80,9 @@ export type StellarClientOptions = {
   logLevel?: LogLevel;
   webSocketConfig?: WebSocketConfig;
   cloudWatchConfig?: CloudWatchConfig;
+  monitoringConfig?: Partial<Omit<RpcHealthMonitorConfig, "endpoints">> & {
+    enabled?: boolean;
+  };
   customHeaders?: Record<string, string>;
   feeBufferMultiplier?: number;
   maxFeeLimit?: number;
@@ -225,6 +234,8 @@ export class StellarClient extends BaseStellarRpcClient {
   private readonly concurrencyEnabled: boolean;
   private readonly logger: Logger;
   private webSocketManager: WebSocketManager | null = null;
+  /** Optional RPC endpoint health monitor. */
+  readonly healthMonitor?: RpcHealthMonitor;
   private readonly pendingTransactions = new Map<string, TrackedTransaction>();
   readonly accountFetchTimeoutMs: number;
   readonly cacheTtlMs: number;
@@ -273,21 +284,10 @@ export class StellarClient extends BaseStellarRpcClient {
         }
       }
 
-    if (isProduction && isHttp && !isLocalhost && !allowHttp) {
-      throw new InsecureNetworkError(
-        'Insecure RPC connection in production: HTTP endpoint detected. ' +
-        'Use HTTPS for production or set allowHttp: true to override.'
-      );
-    }
-
     super();
-      this.network = network;
-      this.rpcUrls = rpcUrls;
-      this.currentRpcIndex = 0;
-      this.networkPassphrase = networkPassphrase;
-
     this.network = network;
-    this.rpcUrl = rpcUrl;
+    this.rpcUrls = rpcUrls;
+    this.currentRpcIndex = 0;
     this.networkPassphrase = networkPassphrase;
     this.concurrencyConfig = { ...DEFAULT_CONCURRENCY_CONFIG, ...options?.concurrencyConfig };
     this.concurrencyEnabled = !!options?.concurrencyConfig;
@@ -329,6 +329,23 @@ export class StellarClient extends BaseStellarRpcClient {
           logger: this.logger,
       });
     }
+
+    if (options?.monitoringConfig?.enabled) {
+      this.healthMonitor = new RpcHealthMonitor({
+        intervalMs: options.monitoringConfig.intervalMs,
+        timeoutMs: options.monitoringConfig.timeoutMs,
+        degradedLatencyMs: options.monitoringConfig.degradedLatencyMs,
+        unhealthyAfterFailures: options.monitoringConfig.unhealthyAfterFailures,
+        autoStart: options.monitoringConfig.autoStart,
+        endpoints: this.rpcUrls.map((url, index) => ({
+          id: `${this.network}:${url}`,
+          url,
+          network: this.network,
+          rpcClient: this.rpcServers[index],
+          allowHttp
+        }))
+      });
+    }
   }
 
   /**
@@ -340,13 +357,8 @@ export class StellarClient extends BaseStellarRpcClient {
       return false;
     }
 
-    if (options?.rpcClient) {
-      this.rpc = options.rpcClient;
-    } else {
-      const allowHttp = this.rpcUrl.startsWith("http://");
-      const baseRpc = new rpc.Server(this.rpcUrl, { allowHttp });
-      this.rpc = this.concurrencyEnabled ? createConcurrencyControlledClient(baseRpc, this.concurrencyConfig) : baseRpc;
     this.currentRpcIndex = (this.currentRpcIndex + 1) % this.rpcUrls.length;
+    this.rpc = this.rpcServers[this.currentRpcIndex];
     this.logger.info(`Switched to RPC URL: ${this.rpcUrl}`);
     return true;
   }
@@ -391,6 +403,45 @@ export class StellarClient extends BaseStellarRpcClient {
       );
       return validateRpcResponse(GetHealthResponseSchema, response, 'getHealth');
     }, "Failed to fetch network health");
+  }
+
+  /**
+   * Runs a health check for this client's configured RPC endpoint.
+   * Monitoring must be enabled with monitoringConfig.enabled.
+   */
+  async runEndpointHealthCheck(): Promise<RpcEndpointStatus> {
+    if (!this.healthMonitor) {
+      throw new AxionveraError('RPC health monitoring is not enabled for this client');
+    }
+
+    const [status] = await this.healthMonitor.runHealthChecks();
+    return status;
+  }
+
+  /**
+   * Returns the latest known health status for this client's current RPC endpoint.
+   */
+  getEndpointHealthStatus(): RpcEndpointStatus | undefined {
+    return this.healthMonitor?.getEndpointStatus(`${this.network}:${this.rpcUrl}`);
+  }
+
+  /**
+   * Returns a full health report for this client's monitored RPC endpoints.
+   */
+  getHealthStatusReport(): RpcHealthStatusReport | undefined {
+    return this.healthMonitor?.getHealthReport();
+  }
+
+  startHealthMonitoring(): void {
+    if (!this.healthMonitor) {
+      throw new AxionveraError('RPC health monitoring is not enabled for this client');
+    }
+
+    this.healthMonitor.start();
+  }
+
+  stopHealthMonitoring(): void {
+    this.healthMonitor?.stop();
   }
 
   /**
@@ -942,91 +993,6 @@ private updateCache(publicKey: string, sequence: string): void {
       restored.push(tracked);
     }
     return restored;
-  ): Promise<TransactionPollResult> {
-    return this.executeWithErrorHandling(async () => {
-      const timeoutMs = params?.timeoutMs ?? 30_000;
-      const intervalMs = params?.intervalMs ?? 1_000;
-      const onProgress = params?.onProgress;
-
-      validatePollingInterval(timeoutMs, "timeoutMs", true);
-      validatePollingInterval(intervalMs, "intervalMs", false);
-
-      return await new Promise<TransactionPollResult>((resolve, reject) => {
-        let settled = false;
-        let pollTimer: ReturnType<typeof setTimeout> | undefined;
-
-        const clearTimers = () => {
-          clearTimeout(timeoutTimer);
-          if (pollTimer) {
-            clearTimeout(pollTimer);
-          }
-        };
-
-        const settle = (callback: () => void) => {
-          if (settled) {
-            return;
-          }
-
-          settled = true;
-          clearTimers();
-          callback();
-        };
-
-        const scheduleNextPoll = () => {
-          if (settled) {
-            return;
-          }
-
-          pollTimer = setTimeout(() => {
-            void pollOnce();
-          }, intervalMs);
-        };
-
-        const timeoutTimer = setTimeout(() => {
-          settle(() => {
-            reject(
-              new TransactionTimeoutError(
-                `Timed out waiting for transaction ${hash} after ${timeoutMs}ms`
-              )
-            );
-          });
-        }, timeoutMs);
-
-        const pollOnce = async () => {
-          try {
-            const res = await this.getTransaction(hash);
-            if (settled) {
-              return;
-            }
-
-            const parsed = parseTransactionPollResult(res);
-
-            if (onProgress) {
-              Promise.resolve()
-                .then(() => onProgress(parsed.status, parsed.ledger ?? 0))
-                .catch((err) => {
-                  this.logger.warn("onProgress callback error", err);
-                });
-            }
-
-            if (parsed.status === "SUCCESS" || parsed.status === "FAILED") {
-              settle(() => resolve(parsed));
-              return;
-            }
-
-            scheduleNextPoll();
-          } catch (error) {
-            if (settled) {
-              return;
-            }
-
-            settle(() => reject(error));
-          }
-        };
-
-        void pollOnce();
-      });
-    }, `Failed while polling transaction ${hash}`);
   }
 
   /**

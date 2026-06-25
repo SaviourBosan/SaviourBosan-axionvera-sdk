@@ -112,6 +112,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.1037.0",
-    "ethers": "^6.16.0"
+    "ethers": "^6.16.0",
+    "valibot": "^1.4.1"
   }
 }

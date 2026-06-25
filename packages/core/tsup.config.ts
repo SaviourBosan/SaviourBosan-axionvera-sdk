@@ -5,6 +5,7 @@ export default defineConfig({
     index: 'src/index.ts',
     vault: 'src/contracts/index.ts',
     client: 'src/client/index.ts',
+    monitoring: 'src/monitoring/index.ts',
     utils: 'src/utils/index.ts',
     wallet: 'src/wallet/index.ts',
     session: 'src/session/index.ts',

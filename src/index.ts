@@ -205,6 +205,18 @@ export { parseEvents, decodeSorobanSymbol } from './utils/soroban';
 export type { ParsedEvent, ParseEventsOptions, DecodedTopic } from './utils/soroban';
 export { isValidXDR, assertValidXDR, MAX_XDR_STRING_LENGTH } from './utils/xdrValidator';
 
+// Monitoring
+export { RpcHealthMonitor } from './monitoring';
+export type {
+  EndpointHealthState,
+  RpcEndpointConfig,
+  RpcEndpointMetrics,
+  RpcEndpointStatus,
+  RpcHealthCheckClient,
+  RpcHealthMonitorConfig,
+  RpcHealthResponse,
+  RpcHealthStatusReport,
+} from './monitoring';
 
 // Profiling
 export { ProfilingService, profilingService } from './profiling';

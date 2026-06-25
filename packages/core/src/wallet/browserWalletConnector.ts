@@ -53,11 +53,9 @@ async function loadFreighter(): Promise<FreighterApi> {
   const provider = (freighterModule as { default?: unknown }).default ?? freighterModule;
   if (
     !provider ||
-    typeof (provider as any).getPublicKey !== 'function' ||
-    typeof (provider as any).signTransaction !== 'function' ||
-    typeof (provider as any).getNetwork !== 'function'
     typeof (provider as Record<string, unknown>).getPublicKey !== 'function' ||
-    typeof (provider as Record<string, unknown>).signTransaction !== 'function'
+    typeof (provider as Record<string, unknown>).signTransaction !== 'function' ||
+    typeof (provider as Record<string, unknown>).getNetwork !== 'function'
   ) {
     throw new WalletNotInstalledError(
       'Freighter extension is not detected. Please install the Freighter browser extension.'
