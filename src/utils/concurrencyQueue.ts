@@ -10,7 +10,7 @@ export interface QueuedRequest<T> {
   id: string;
   execute: () => Promise<T>;
   resolve: (value: T) => void;
-  reject: (reason: any) => void;
+  reject: (reason: unknown) => void;
   timestamp: number;
   timeoutId?: ReturnType<typeof setTimeout>;
 }

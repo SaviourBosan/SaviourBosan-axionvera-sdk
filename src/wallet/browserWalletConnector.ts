@@ -12,6 +12,18 @@ type FreighterApi = {
   ) => Promise<string | { signedTransaction: string }>;
 };
 
+/** Type guard for Freighter API interface */
+function isFreighterApi(obj: unknown): obj is FreighterApi {
+  if (!obj || typeof obj !== 'object') return false;
+  
+  const api = obj as Record<string, unknown>;
+  return (
+    typeof api.getPublicKey === 'function' &&
+    typeof api.signTransaction === 'function' &&
+    typeof api.getNetwork === 'function'
+  );
+}
+
 /**
  * Maps Freighter network names to SDK network names.
  * Freighter returns network names like "TESTNET", "PUBLIC", etc.
@@ -51,19 +63,18 @@ async function loadFreighter(): Promise<FreighterApi> {
     );
   }
 
-  const provider = (freighterModule as any).default ?? freighterModule;
-  if (
-    !provider ||
-    typeof (provider as any).getPublicKey !== 'function' ||
-    typeof (provider as any).signTransaction !== 'function' ||
-    typeof (provider as any).getNetwork !== 'function'
-  ) {
+  // Try to get the default export or the module itself
+  const moduleObj = freighterModule as Record<string, unknown> | null;
+  const provider = moduleObj?.default ?? freighterModule;
+  
+  // Use type guard instead of type assertions
+  if (!isFreighterApi(provider)) {
     throw new WalletNotInstalledError(
       'Freighter extension is not detected. Please install the Freighter browser extension.'
     );
   }
 
-  return provider as FreighterApi;
+  return provider;
 }
 
 export class BrowserWalletConnector implements WalletConnector {

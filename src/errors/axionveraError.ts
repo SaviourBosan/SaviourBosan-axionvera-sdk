@@ -1,16 +1,13 @@
 import type { ValidationIssue, ValidationKind } from '../types/validation';
 
-interface ErrorHeaderContainer {
-  get?: (name: string) => string | undefined;
-  [key: string]: unknown;
-}
-
+/** Type-safe error response structure */
 interface ErrorResponseLike {
-  status?: unknown;
-  headers?: ErrorHeaderContainer;
+  status?: number;
+  headers?: Record<string, string>;
   data?: unknown;
 }
 
+/** Type-safe error structure with discriminated union */
 interface ErrorLike {
   message?: unknown;
   code?: unknown;
@@ -18,6 +15,25 @@ interface ErrorLike {
   requestId?: unknown;
   response?: ErrorResponseLike;
 }
+
+/** Error type discriminant */
+export type ErrorDiscriminant = 
+  | 'NetworkError'
+  | 'AuthenticationError'
+  | 'RateLimitError'
+  | 'ValidationError'
+  | 'TransactionError'
+  | 'RpcError'
+  | 'ContractError'
+  | 'TimeoutError'
+  | 'InsufficientFundsError'
+  | 'InvalidSignatureError'
+  | 'InvalidXDRError'
+  | 'SimulationError'
+  | 'WalletNotInstalledError'
+  | 'FaucetRateLimitError'
+  | 'NetworkMismatchError'
+  | 'InsecureNetworkError';
 
 export interface AxionveraErrorOptions {
   statusCode?: number;
@@ -36,6 +52,11 @@ export class AxionveraError extends Error {
     this.statusCode = options.statusCode;
     this.requestId = options.requestId;
     this.originalError = options.originalError;
+  }
+
+  /** Type-safe discriminant method for error handling */
+  getType(): ErrorDiscriminant {
+    return (this.name as ErrorDiscriminant) || 'NetworkError';
   }
 }
 

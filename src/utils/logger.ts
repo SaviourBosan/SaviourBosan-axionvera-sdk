@@ -1,9 +1,13 @@
 export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug';
+
+/** Typed log arguments supporting primitives and objects */
+export type LogArg = string | number | boolean | null | object | Error | undefined;
+
 export interface CustomLogger {
-  info(message: string, ...args: any[]): void;
-  warn(message: string, ...args: any[]): void;
-  error(message: string, ...args: any[]): void;
-  debug(message: string, ...args: any[]): void;
+  info(message: string, ...args: LogArg[]): void;
+  warn(message: string, ...args: LogArg[]): void;
+  error(message: string, ...args: LogArg[]): void;
+  debug(message: string, ...args: LogArg[]): void;
 }
 
 import { CloudWatchLogger, CloudWatchConfig, LogEntry } from './logging/cloudwatch';
@@ -35,14 +39,36 @@ export class Logger {
     }
   }
 
+  /**
+   * Set the log level for this logger.
+   */
+  setLevel(level: LogLevel): void {
+    this.level = level;
+  }
+
+  /**
+   * Get the current log level.
+   */
+  getLevel(): LogLevel {
+    return this.level;
+  }
+
   private shouldLog(level: LogLevel): boolean {
     return LOG_LEVEL_PRIORITY[level] <= LOG_LEVEL_PRIORITY[this.level] && this.level !== 'none';
   }
 
   /**
    * Recursively redacts sensitive information from messages and objects.
+   * Preserves the type structure while removing sensitive values.
    */
-  private redact(message: any): any {
+  private redact<T extends LogArg | Error>(message: T): T {
+    return this._redactValue(message) as T;
+  }
+
+  /**
+   * Internal redaction implementation.
+   */
+  private _redactValue(message: any): any {
     const sensitiveKeys = ['authorization', 'api-key', 'apikey', 'secret', 'password', 'token', 'x-api-key', 'privatekey', 'private_key'];
 
     if (typeof message === 'string') {
@@ -93,7 +119,7 @@ export class Logger {
     return message;
   }
 
-  private async sendToCloudWatch(level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR', message: string, metadata?: any): Promise<void> {
+  private async sendToCloudWatch(level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR', message: string, metadata?: LogArg): Promise<void> {
     if (this.cloudWatchLogger) {
       try {
         const logEntry: LogEntry = {

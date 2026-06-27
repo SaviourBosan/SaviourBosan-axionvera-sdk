@@ -90,7 +90,10 @@ export function traceMethod(level: TraceLevel = 'info') {
   return function (_target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const original = descriptor.value;
     descriptor.value = function (...args: any[]) {
-      const tracer: Tracer | undefined = (this as any).__tracer;
+      // Safely access __tracer property with type narrowing
+      const obj = this as Record<string, unknown>;
+      const tracer = obj.__tracer as Tracer | undefined;
+      
       if (!tracer) return original.apply(this, args);
 
       const spanId = tracer.startSpan(propertyKey, {

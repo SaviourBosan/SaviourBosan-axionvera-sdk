@@ -20,7 +20,7 @@ export class ObservabilityService {
     this.config = { ...this.config, ...updates };
 
     if (updates.logLevel !== undefined) {
-      (this.logger as any).level = updates.logLevel;
+      this.logger.setLevel(updates.logLevel);
     }
     if (updates.traceLevel !== undefined) {
       this.tracer.setLevel(updates.traceLevel);

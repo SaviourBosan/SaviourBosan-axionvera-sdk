@@ -6,7 +6,18 @@ import { assertValidXDR } from './xdrValidator';
  * Decoded Soroban event topic representation.
  * Can be a symbol, string, or other decoded value.
  */
-export type DecodedTopic = string | number | bigint | boolean | null | { [key: string]: any };
+export type DecodedTopic = 
+  | string 
+  | number 
+  | bigint 
+  | boolean 
+  | null 
+  | DecodedTopic[];
+
+/** Type guard for XDR ScVal arm type */
+function isScValArm(value: any, arm: string): value is { arm: () => string; value: () => any } {
+  return value != null && typeof value.arm === 'function' && typeof value.value === 'function';
+}
 
 /**
  * Parsed Soroban event with structured topics and data.
@@ -43,11 +54,11 @@ export type ParseEventsOptions = {
  * @returns The decoded string
  */
 export function decodeSorobanSymbol(scVal: xdr.ScVal): string {
-  const s = scVal as any;
-  const arm = s.arm();
+  // Use safe property access with type narrowing
+  const arm = (scVal as any)?.arm?.();
   
   if (arm === 'sym' || arm === 'str') {
-    const value = s.value();
+    const value = (scVal as any)?.value?.();
     return value ? value.toString() : "";
   }
 
@@ -66,8 +77,10 @@ function decodeScVal(scVal: xdr.ScVal): DecodedTopic {
   try {
     if (!scVal) return null;
 
-    const s = scVal as any;
-    const arm = s.arm();
+    const scValObj = scVal as any;
+    const arm = scValObj?.arm?.();
+
+    if (!arm) return null;
 
     // Handle symbols and strings
     if (arm === 'sym' || arm === 'str') {
@@ -76,7 +89,7 @@ function decodeScVal(scVal: xdr.ScVal): DecodedTopic {
 
     // Handle integers
     if (arm === 'i128' || arm === 'i256') {
-      const intVal = s.value();
+      const intVal = scValObj?.value?.();
       if (intVal) {
         if (typeof intVal.toNumber === 'function') {
           return intVal.toNumber();
@@ -85,11 +98,12 @@ function decodeScVal(scVal: xdr.ScVal): DecodedTopic {
           return BigInt(intVal.toString());
         }
       }
+      return null;
     }
 
     // Handle unsigned integers
     if (arm === 'u128' || arm === 'u256') {
-      const uintVal = s.value();
+      const uintVal = scValObj?.value?.();
       if (uintVal) {
         if (typeof uintVal.toNumber === 'function') {
           return uintVal.toNumber();
@@ -98,11 +112,13 @@ function decodeScVal(scVal: xdr.ScVal): DecodedTopic {
           return BigInt(uintVal.toString());
         }
       }
+      return null;
     }
 
     // Handle booleans
     if (arm === 'b') {
-      return s.b();
+      const boolVal = scValObj?.b?.();
+      return typeof boolVal === 'boolean' ? boolVal : null;
     }
 
     // Handle void
@@ -111,7 +127,8 @@ function decodeScVal(scVal: xdr.ScVal): DecodedTopic {
     }
 
     // For unknown types, return string representation
-    return s.toString ? s.toString() : String(scVal);
+    const stringVal = scValObj?.toString?.();
+    return typeof stringVal === 'string' ? stringVal : null;
   } catch (error) {
     // If decoding fails, return null
     return null;
@@ -119,22 +136,22 @@ function decodeScVal(scVal: xdr.ScVal): DecodedTopic {
 }
 
 /**
- * Determines if an event is a diagnostic event.
- * Diagnostic events are internal Soroban events that may not be relevant to contracts.
- * 
- * @param event - The raw event from Soroban RPC
- * @returns true if the event is a diagnostic event
+ * Type guard to check if event has diagnostic marker.
  */
-function isDiagnosticEvent(event: any): boolean {
+function isDiagnosticEvent(event: unknown): event is Record<string, unknown> & { type?: string } {
+  if (!event || typeof event !== 'object') return false;
+  const eventObj = event as Record<string, unknown>;
+  
   // Check if the event has 'type' field and it's 'diagnostic'
-  if (event.type === 'diagnostic') {
+  if (eventObj.type === 'diagnostic') {
     return true;
   }
 
   // Alternative: check if topics contain 'diagnostic' marker
-  if (Array.isArray(event.topic) && event.topic.length > 0) {
+  const topic = eventObj.topic;
+  if (Array.isArray(topic) && topic.length > 0) {
     try {
-      const firstTopic = event.topic[0];
+      const firstTopic = topic[0];
       if (typeof firstTopic === 'string') {
         const decoded = decodeXdrBase64(firstTopic);
         const topicStr = decodeSorobanSymbol(decoded);

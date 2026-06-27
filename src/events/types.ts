@@ -4,6 +4,16 @@
   eventTypes?: ('contract' | 'ledger')[];
 }
 
+/** Typed value that can appear in Soroban events */
+export type SorobanEventValue = 
+  | string 
+  | number 
+  | bigint 
+  | boolean 
+  | null 
+  | SorobanEventValue[] 
+  | Record<string, SorobanEventValue>;
+
 export interface SorobanEvent {
   id: string;
   type: 'contract' | 'ledger';
@@ -12,7 +22,8 @@ export interface SorobanEvent {
   topics?: string[];
   topicNames?: string[];
   eventName?: string;
-  value: any;
+  /** Typed event value - no longer any */
+  value: SorobanEventValue;
   ledger: number;
   timestamp: number;
 }

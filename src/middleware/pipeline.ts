@@ -1,4 +1,4 @@
-import { Middleware, MiddlewareContext, MiddlewareRegistration, MiddlewareWorkflow } from './types';
+import { Middleware, MiddlewareContext, MiddlewareHookReturn, MiddlewareRegistration, MiddlewareWorkflow } from './types';
 
 export class MiddlewarePipeline {
   private readonly middleware: Middleware[] = [];
@@ -87,7 +87,7 @@ export class MiddlewarePipeline {
   }
 
   private async applyHook<TPayload, TResult>(
-    hook: (context: MiddlewareContext<TPayload, TResult>) => void | MiddlewareContext<TPayload, TResult> | Promise<void | MiddlewareContext<TPayload, TResult>>,
+    hook: (context: MiddlewareContext<TPayload, TResult>) => MiddlewareHookReturn<TPayload, TResult>,
     context: MiddlewareContext<TPayload, TResult>
   ): Promise<MiddlewareContext<TPayload, TResult>> {
     const nextContext = await hook(context);
