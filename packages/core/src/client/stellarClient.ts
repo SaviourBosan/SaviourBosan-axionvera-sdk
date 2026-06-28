@@ -1,4 +1,16 @@
 import {
+  Account,
+  Address,
+  Contract,
+  FeeBumpTransaction,
+  Keypair,
+  nativeToScVal,
+  scValToNative,
+  rpc,
+  SorobanDataBuilder,
+  Transaction,
+  TransactionBuilder,
+  xdr
     Account,
 Address,
 Contract,
@@ -20,6 +32,15 @@ resolveNetworkConfig
 } from "../utils/networkConfig";
 import { ConcurrencyConfig, DEFAULT_CONCURRENCY_CONFIG, createConcurrencyControlledClient } from "../utils/concurrencyQueue";
 import { RetryConfig, createHttpClientWithRetry, retry } from "../utils/httpInterceptor";
+import { NetworkError, toAxionveraError, InsecureNetworkError, AxionveraError, TransactionTimeoutError, ValidationError } from "../errors/axionveraError";
+import {
+  validateRpcResponse,
+  GetHealthResponseSchema,
+  SimulateTransactionResponseSchema,
+  GetTransactionResponseSchema,
+  ValidatedGetHealthResponse,
+  ValidatedGetTransactionResponse,
+} from "../utils/rpcSchemas";
 import {
 NetworkError,
 toAxionveraError,
@@ -994,6 +1015,7 @@ private updateCache(publicKey: string, sequence: string): void {
     }
     return restored;
   }
+
 
   /**
    * Waits for a transaction to be confirmed or rejected with a Promise-based API.
