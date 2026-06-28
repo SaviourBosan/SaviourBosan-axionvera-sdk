@@ -174,13 +174,7 @@ export class Vault {
 
     try {
       const contractWithSigner = this.contract.connect(signerToUse);
-      const tx = await (contractWithSigner as any).withdraw(
-        params.amount,
-      const withdrawFunc = this.contract.getFunction('withdraw');
-      const tx = await withdrawFunc(params.amount,
-        await signerToUse.getAddress(),
-        await signerToUse.getAddress()
-      );
+      const tx = await (contractWithSigner as any).withdraw(params.amount);
       return tx;
     } catch (error) {
       if (error instanceof Error && error.message.toLowerCase().includes('insufficient funds')) {
@@ -220,8 +214,6 @@ export class Vault {
   async getPendingRewards(userAddress: string): Promise<bigint> {
     const result = await this.contract.pendingRewards(userAddress);
     return BigInt(result.toString());
-    const rewards = await this.contract.pendingRewards(userAddress);
-    return BigInt(rewards.toString());
   }
 
   /**
@@ -232,9 +224,6 @@ export class Vault {
   async estimateDepositGas(amount: bigint): Promise<bigint> {
     const result = await (this.contract.estimateGas as any).deposit(amount);
     return BigInt(result.toString());
-    const depositFunc = this.contract.getFunction('deposit');
-    const gas = await depositFunc.estimateGas(amount);
-    return BigInt(gas.toString());
   }
 
   /**
@@ -245,9 +234,6 @@ export class Vault {
   async estimateWithdrawGas(amount: bigint): Promise<bigint> {
     const result = await (this.contract.estimateGas as any).withdraw(amount);
     return BigInt(result.toString());
-    const withdrawFunc = this.contract.getFunction('withdraw');
-    const gas = await withdrawFunc.estimateGas(amount);
-    return BigInt(gas.toString());
   }
 }
 
